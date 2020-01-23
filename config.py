@@ -1,11 +1,11 @@
 import numpy as np
 
 class Config:
-    
+
     def __init__(self):
 
         self.num_steps = 500
-        self.dim = (100,60,30)
+        self.dim = (100,50,10)
 
         # p and c for GaAs
         self.p_GaAs = 5307
@@ -24,7 +24,7 @@ class Config:
                               [    0,     0,     0, 2.61,    0,    0],
                               [    0,     0,     0,    0, 2.61,    0],
                               [    0,     0,     0,    0,    0, 2.61]])*1e10
- 
+
         # p and c for Au
         self.p_Au = 19300
         self.c_Au = np.array([[19.25,  16.3,  16.3,    0,    0,    0],

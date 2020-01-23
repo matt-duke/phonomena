@@ -32,6 +32,6 @@ class Grid:
 
         self.dd = 1
         self.dt = 0
-        self.sc = 1/np.sqrt(3)/1.5
+        self.sc = 1/(np.sqrt(3)*1.5)
         self.T2u = np.zeros((size_x, size_y, size_z))
         self.u2T = 0
