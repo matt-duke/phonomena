@@ -2,6 +2,7 @@ import numpy as np
 from collections import namedtuple
 import math as m
 
+
 class Grid:
 
     def __init__(self, size_x, size_y, size_z):
@@ -14,6 +15,7 @@ class Grid:
 
         self.x = np.array((), dtype=np.float)
         self.y = np.array((), dtype=np.float)
+        self.built = False
 
         self.targets = None
 
@@ -126,8 +128,6 @@ class Grid:
         self.x = removeClose(self.x)
         self.x = appendSorted(self.x, closestFit('x'))
 
-        print(self.x)
-
         self.y = appendSorted(self.y, 0)
         self.y = appendSorted(self.y, self.size_y)
         self.y = appendSorted(self.y, functionMesh('y'))
@@ -138,9 +138,11 @@ class Grid:
         #check overlap distances
         #overlap = np.absolute(np.subtract(self.y[0:-1], self.x[1:]))
         #print(overlap)
+        self.built = True
 
 if __name__ == '__main__':
     g = Grid(20, 20, 5)
     g.addInclusion(5,15,0.5)
     g.addInclusion(15,5,0.5)
     g.buildMesh(lambda x: 0.2*x, 0.15)
+    print(g.x)

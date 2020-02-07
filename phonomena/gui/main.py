@@ -1,63 +1,29 @@
 #https://gist.github.com/acbetter/32c575803ec361c3e82064e60db4e3e0
+#https://kushaldas.in/posts/pyqt5-thread-example.html
 
+# boilerplate for package modules
+if __name__ == '__main__':
+    from pathlib import Path
+    import sys
+    file = Path(__file__).resolve()
+    parent, root = file.parent, file.parents[1]
+    sys.path.append(str(root))
+
+    # Additionally remove the current file's directory from sys.path
+    try:
+        sys.path.remove(str(parent))
+    except ValueError: # Already removed
+        pass
+
+import sys
 from PyQt5 import QtWidgets, QtCore, QtGui
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QImage, QPixmap, QPalette, QPainter
 from PyQt5.QtPrintSupport import QPrintDialog, QPrinter
 from PyQt5.QtWidgets import *
 
-import grid
-
-
-class Grid(QGraphicsScene):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        self.lines = []
-        self.scale = 20
-
-        self.draw_grid()
-        self.set_opacity(1)
-
-        #self.set_visible(False)
-        #self.delete_grid()
-
-    def draw_grid(self):#, arr_x, arr_y):
-
-        g = grid.Grid(20, 20, 5)
-        g.addInclusion(5,15,0.5)
-        g.addInclusion(15,5,0.5)
-        g.buildMesh(lambda x: 0.2 * x, 0.15)
-
-        arr_x = g.x * self.scale
-        width = arr_x[-1]
-        arr_y = g.y * self.scale
-        height = arr_y[-1]
-
-        self.setSceneRect(0, 0, width, height)
-        self.setItemIndexMethod(QtWidgets.QGraphicsScene.NoIndex)
-
-        pen = QtGui.QPen(QtGui.QColor(0,0,0), 1, Qt.SolidLine)
-
-        for x in arr_x:
-            self.lines.append(self.addLine(x,0,x,height,pen))
-
-        for y in arr_y:
-            self.lines.append(self.addLine(0,y,width,y,pen))
-
-    def set_visible(self,visible=True):
-        for line in self.lines:
-            line.setVisible(visible)
-
-    def delete_grid(self):
-        for line in self.lines:
-            self.removeItem(line)
-        del self.lines[:]
-
-    def set_opacity(self,opacity):
-        for line in self.lines:
-            line.setOpacity(opacity)
-
+import common
+from gui import widgets
 
 class Main(QWidget):
     def __init__(self):
@@ -65,11 +31,23 @@ class Main(QWidget):
         self.initUI()
 
     def initUI(self):
+        # Widgets
+        self.mesh = widgets.Grid(self)
+        self.meshView = QGraphicsView()
+        self.meshView.setScene(self.mesh)
+
+        self.progress = QProgressBar()
+
+        self.mesh_button = QtWidgets.QPushButton('Mesh', self)
+        self.mesh_button.clicked.connect(self.meshButtonClick)
+
+        groupbox = QGroupBox("Settings")
+
+        # Layouts
         self.vlayout = QVBoxLayout()
         self.hLayout = QHBoxLayout()
         self.setLayout(self.vlayout)
         self.sg_layout = QGridLayout()
-        groupbox = QGroupBox("Settings")
         self.sg_layout.addWidget(QLabel("X width:"),0,0)
         self.sg_layout.addWidget(QLineEdit(),0,1)
         self.sg_layout.addWidget(QLabel("Y width:"),1,0)
@@ -82,18 +60,16 @@ class Main(QWidget):
         self.sg_layout.addWidget(QLineEdit(),4,1)
         self.sg_layout.addWidget(QLabel("Slope:"),5,0)
         self.sg_layout.addWidget(QLineEdit(),5,1)
+        self.sg_layout.addWidget(self.mesh_button,6,0)
         groupbox.setLayout(self.sg_layout)
 
         label1 = QLabel("Widget in Tab 1.")
-        self.mesh = Grid()
-        self.meshView = QGraphicsView()
-        self.meshView.setScene(Grid())
+
         tabwidget = QTabWidget()
         tabwidget.addTab(self.meshView, "Mesh")
         tabwidget.addTab(label1, "Simulation")
         tabwidget.addTab(label1, "Spectrum")
-        self.progress = QProgressBar()
-        self.progress.setValue(65)
+        #self.progress.setValue(65)
 
         self.hLayout.addWidget(groupbox, 1)
         self.hLayout.addWidget(tabwidget, 2)
@@ -101,12 +77,18 @@ class Main(QWidget):
         self.vlayout.addWidget(self.progress)
         #self.mesh.draw_grid()
 
+    def meshButtonClick(self):
+        pass
+        #common.mesh.buildMesh()
+        #self.mesh.deleteGrid()
+        #self.mesh.drawGrid()
+        #self.mesh.setOpacity(1)
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
         self.printer = QPrinter()
-        self.scaleFactor = 0.0
 
         self.imageLabel = QLabel()
         self.imageLabel.setBackgroundRole(QPalette.Base)
@@ -178,11 +160,13 @@ class MainWindow(QMainWindow):
         self.menuBar().addMenu(self.fileMenu)
         self.menuBar().addMenu(self.helpMenu)
 
+def start():
+    app = QApplication(sys.argv)
+    form = MainWindow()
+    form.show()
+    app.exec_()
 
 if __name__ == '__main__':
-    import sys
-    from PyQt5.QtWidgets import QApplication
-
-    app = QApplication(sys.argv)
-    main = MainWindow()
-    sys.exit(app.exec_())
+    common.import_settings("../../data/settings.ini")
+    common.init()
+    start()
