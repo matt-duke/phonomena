@@ -24,115 +24,119 @@ from PyQt5.QtWidgets import *
 
 import common
 from gui import widgets
+from gui.worker import Worker
 
 class Main(QWidget):
-    def __init__(self):
+    def __init__(self, window):
         super().__init__()
+
+        self.window = window
+
+        self.meshpool = QtCore.QThreadPool()
+        self.meshpool.setExpiryTimeout(5000)
+        self.meshpool.setMaxThreadCount(1)
+
         self.initUI()
+        self.window.status_bar.showMessage("Ready.")
 
     def initUI(self):
         # Widgets
-        self.mesh = widgets.Grid(self)
-        self.meshView = QGraphicsView()
-        self.meshView.setScene(self.mesh)
+        self.mesh_widget = widgets.Grid(self)
+        self.mesh_view = QGraphicsView()
+        self.mesh_view.setScene(self.mesh_widget)
 
-        self.progress = QProgressBar()
+        self.settings = QGroupBox("Settings")
+        self.mesh_settings = widgets.MeshSettings(self)
 
-        self.mesh_button = QtWidgets.QPushButton('Mesh', self)
-        self.mesh_button.clicked.connect(self.meshButtonClick)
-
-        groupbox = QGroupBox("Settings")
+        self.run_button = QPushButton()
 
         # Layouts
         self.vlayout = QVBoxLayout()
         self.hLayout = QHBoxLayout()
+        bottomHLayout = QHBoxLayout()
         self.setLayout(self.vlayout)
-        self.sg_layout = QGridLayout()
-        self.sg_layout.addWidget(QLabel("X width:"),0,0)
-        self.sg_layout.addWidget(QLineEdit(),0,1)
-        self.sg_layout.addWidget(QLabel("Y width:"),1,0)
-        self.sg_layout.addWidget(QLineEdit(),1,1)
-        self.sg_layout.addWidget(QLabel("Z width:"),2,0)
-        self.sg_layout.addWidget(QLineEdit(),2,1)
-        self.sg_layout.addWidget(QLabel("Max spacing:"),3,0)
-        self.sg_layout.addWidget(QLineEdit(),3,1)
-        self.sg_layout.addWidget(QLabel("Min spacing:"),4,0)
-        self.sg_layout.addWidget(QLineEdit(),4,1)
-        self.sg_layout.addWidget(QLabel("Slope:"),5,0)
-        self.sg_layout.addWidget(QLineEdit(),5,1)
-        self.sg_layout.addWidget(self.mesh_button,6,0)
-        groupbox.setLayout(self.sg_layout)
+        self.settings.setLayout(self.mesh_settings)
 
         label1 = QLabel("Widget in Tab 1.")
 
         tabwidget = QTabWidget()
-        tabwidget.addTab(self.meshView, "Mesh")
+        tabwidget.addTab(self.mesh_view, "Mesh")
         tabwidget.addTab(label1, "Simulation")
         tabwidget.addTab(label1, "Spectrum")
-        #self.progress.setValue(65)
-
-        self.hLayout.addWidget(groupbox, 1)
+        self.hLayout.addWidget(self.settings, 1)
         self.hLayout.addWidget(tabwidget, 2)
         self.vlayout.addLayout(self.hLayout)
-        self.vlayout.addWidget(self.progress)
-        #self.mesh.draw_grid()
+        self.vlayout.addLayout(bottomHLayout)
 
-    def meshButtonClick(self):
-        pass
-        #common.mesh.buildMesh()
-        #self.mesh.deleteGrid()
-        #self.mesh.drawGrid()
-        #self.mesh.setOpacity(1)
+    def buildMesh(self):
+         print("build mesh")
+         self.meshpool.clear()
+         worker = Worker(common.mesh.buildMesh, callback_fns=self.window.callback_fns)
+         worker.signals.finished.connect(self.mesh_widget.drawGrid)
+         self.meshpool.start(worker)
+
+    def refresh(self):
+        self.mesh_settings.refresh()
+        self.buildMesh()
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.printer = QPrinter()
-
-        self.imageLabel = QLabel()
-        self.imageLabel.setBackgroundRole(QPalette.Base)
-        self.imageLabel.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
-        self.imageLabel.setScaledContents(True)
+        # Used to force quit all running threads
+        #quit_action = QAction("Quit", self)
+        #quit_action.triggered.connect(quit)
 
         self.createActions()
         self.createMenus()
 
-        self.setWindowTitle("Phonomena")
-        self.resize(800, 600)
+        self.setWindowTitle("Phononema")
+        self.resize(900, 700)
 
-        self.main = Main()
+        self.status_bar = QStatusBar()
+        self.setStatusBar(self.status_bar)
+        self.progress_bar = QProgressBar()
+
+        self.callback_fns = {'status': self.updateStatus,
+                             'error': self.showError,
+                             'progress': self.updateProgress}
+
+        self.main = Main(self)
         self.setCentralWidget(self.main)
         self.show()
+        self.main.refresh()
+
+    def showError(self, err):
+        print(err)
+        msg = QMessageBox()
+        msg.setIcon(QMessageBox.Critical)
+        msg.setText(str(err[1]))
+        msg.setInformativeText(str(err[2]))
+        msg.setWindowTitle("Error")
+        msg.exec_()
+
+    def updateStatus(self, msg):
+        assert type(msg) == str
+        #print(msg)
+        self.status_bar.showMessage(msg)
+
+    def updateProgress(self, n):
+        assert n >= 0 and n <= 100
+        self.progress_bar.setValue(n)
 
     def open(self):
         options = QFileDialog.Options()
-        # fileName = QFileDialog.getOpenFileName(self, "Open File", QDir.currentPath())
-        fileName, _ = QFileDialog.getOpenFileName(self, 'QFileDialog.getOpenFileName()', '',
-                                                  'Images (*.png *.jpeg *.jpg *.bmp *.gif)', options=options)
-        if fileName:
-            image = QImage(fileName)
-            if image.isNull():
-                QMessageBox.information(self, "Image Viewer", "Cannot load %s." % fileName)
-                return
+        filename, _ = QFileDialog.getOpenFileName(self, "Open File", QtCore.QDir.currentPath())
+        if filename:
+            print(common.mesh.size_x)
+            common.import_settings(filename)
+            common.init()
+            self.main.refresh()
 
-            self.imageLabel.setPixmap(QPixmap.fromImage(image))
-            self.scaleFactor = 1.0
-
-            self.scrollArea.setVisible(True)
-            self.printAct.setEnabled(True)
-            self.updateActions()
-
-    def print_(self):
-        dialog = QPrintDialog(self.printer, self)
-        if dialog.exec_():
-            painter = QPainter(self.printer)
-            rect = painter.viewport()
-            size = self.imageLabel.pixmap().size()
-            size.scale(rect.size(), Qt.KeepAspectRatio)
-            painter.setViewport(rect.x(), rect.y(), size.width(), size.height())
-            painter.setWindow(self.imageLabel.pixmap().rect())
-            painter.drawPixmap(0, 0, self.imageLabel.pixmap())
+    def save(self):
+        filename, _ = QFileDialog.getSaveFileName(self, "Save File", QtCore.QDir.currentPath())
+        if filename:
+            common.save_settings(filename)
 
     def about(self):
         QMessageBox.about(self, "Phonomena",
@@ -143,14 +147,14 @@ class MainWindow(QMainWindow):
 
     def createActions(self):
         self.openAct = QAction("&Open...", self, shortcut="Ctrl+O", triggered=self.open)
-        self.printAct = QAction("&Print...", self, shortcut="Ctrl+P", enabled=False, triggered=self.print_)
+        self.saveAct = QAction("&Save...", self, shortcut="Ctrl+S", triggered=self.save)
         self.exitAct = QAction("E&xit", self, shortcut="Ctrl+Q", triggered=self.close)
         self.aboutAct = QAction("&About", self, triggered=self.about)
 
     def createMenus(self):
         self.fileMenu = QMenu("&File", self)
         self.fileMenu.addAction(self.openAct)
-        self.fileMenu.addAction(self.printAct)
+        self.fileMenu.addAction(self.saveAct)
         self.fileMenu.addSeparator()
         self.fileMenu.addAction(self.exitAct)
 
@@ -165,8 +169,9 @@ def start():
     form = MainWindow()
     form.show()
     app.exec_()
+    sys.exit(0)
 
 if __name__ == '__main__':
-    common.import_settings("../../data/settings.ini")
+    common.import_settings()
     common.init()
     start()

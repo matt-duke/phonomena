@@ -1,33 +1,61 @@
+# boilerplate for package modules
+if __name__ == '__main__':
+    from pathlib import Path
+    import sys
+    file = Path(__file__).resolve()
+    parent, root = file.parent, file.parents[1]
+    sys.path.append(str(root))
+
+    # Additionally remove the current file's directory from sys.path
+    try:
+        sys.path.remove(str(parent))
+    except ValueError: # Already removed
+        pass
+
 import numpy as np
-from collections import namedtuple
 import math as m
 
+from gui.worker import WorkerSignals
 
 class Grid:
 
     def __init__(self, size_x, size_y, size_z):
-        self.size_x = size_x
-        self.size_y = size_y
-        self.size_z = size_z
+
+        self.size_x = 11
+        self.size_y = 10
+        self.size_z = 10
+
+        self.min_d = 0.1
+
+        self.slope = 0.5
+        self.spacing_fn = lambda x: x * self.slope
 
         self.default_dx = 1
         self.default_dy = 1
 
         self.x = np.array((), dtype=np.float)
         self.y = np.array((), dtype=np.float)
-        self.built = False
 
-        self.targets = None
+        self.trgt_dtype=np.dtype([('x','f'), ('y','f'), ('r','f')])
+        self.targets = np.empty((0,0), self.trgt_dtype)
+
+        self.addInclusion(1, 1, 1)
+
+
+    def clearMesh(self):
+        self.x = np.array((), dtype=np.float)
+        self.y = np.array((), dtype=np.float)
+        built = False
+
+    def clearInclusions(self):
+        self.targets = np.empty((0,0), self.trgt_dtype)
 
     def addInclusion(self, x, y, r):
-        dtype=np.dtype([('x','f'), ('y','f'), ('r','f')])
-        target = np.array([(x,y,r)], dtype=dtype)
-        if type(self.targets) == type(None):
-            self.targets = target
-        else:
-            self.targets = np.append(self.targets, target)
+        #dtype=np.dtype([('x','f'), ('y','f'), ('r','f')])
+        target = np.array([(x,y,r)], dtype=self.trgt_dtype)
+        self.targets = np.append(self.targets, target)
 
-    def buildMesh(self, function, min_d):
+    def buildMesh(self, *args, **kwargs):
 
         def appendSorted(arr, values):
             # only keep values not in main array
@@ -40,7 +68,7 @@ class Grid:
             fine_mesh = np.array((0,))
             dx = 0
             while dx < max_d:
-                dx = function(fine_mesh[-1] + min_d) + min_d
+                dx = self.spacing_fn(fine_mesh[-1] + self.min_d) + self.min_d
                 if dx < max_d:
                     fine_mesh = np.append(fine_mesh, fine_mesh[-1] + dx)
 
@@ -49,7 +77,7 @@ class Grid:
         def removeClose(arr):
             # Remove mesh points that are too close together
             overlap = np.absolute(np.subtract(arr[0:-1], arr[1:]))
-            indices = np.add(np.where(overlap < min_d), 1)
+            indices = np.add(np.where(overlap < self.min_d), 1)
             arr = np.delete(arr, indices)
             return arr
 
@@ -61,9 +89,9 @@ class Grid:
             global_mesh = {'x': self.x, 'y': self.y}[axis]
             fine_mesh = fineMesh(default_d)
             t = np.sort(self.targets, order=axis)
-
             mesh = np.array(())
             # Add mesh to right and left of inclusion region
+
             for i in range(len(t)):
                 x1, x2 = None, None
                 # This is the first
@@ -114,35 +142,42 @@ class Grid:
             assert axis == 'x' or axis == 'y'
             mesh = np.array(())
             for t in self.targets:
-                n = int(round(t['r']*2 / min_d)) - 1
+                n = int(round(t['r']*2 / self.min_d)) - 1
                 fn = lambda var: (t['r']*2 / n) * (var+1) + t[axis] - t['r']
                 mesh = appendSorted(mesh, np.fromfunction(fn, (n,)))
 
             return mesh
 
+        # return dummy signals if not passed to function
+        signals = WorkerSignals() if 'signals' not in kwargs.keys() else kwargs['signals']
+        signals.status.emit("Rebuilding mesh...")
+        signals.progress.emit(0)
         # Add first and last mesh points
+        self.clearMesh()
         self.x = appendSorted(self.x, 0)
         self.x = appendSorted(self.x, self.size_x)
-        self.x = appendSorted(self.x, functionMesh('x'))
-        self.x = appendSorted(self.x, fillInclusion('x'))
-        self.x = removeClose(self.x)
+        if len(self.targets) > 0:
+            signals.status.emit("Area around inclusion regions...")
+            #self.x = appendSorted(self.x, functionMesh('x'))
+            #signals.status.emit("Filling inclusion regions...")
+            self.x = appendSorted(self.x, fillInclusion('x'))
+            self.x = removeClose(self.x)
+        signals.status.emit("X mesh completed...")
         self.x = appendSorted(self.x, closestFit('x'))
 
         self.y = appendSorted(self.y, 0)
         self.y = appendSorted(self.y, self.size_y)
-        self.y = appendSorted(self.y, functionMesh('y'))
-        self.y = appendSorted(self.y, closestFit('y'))
-        self.y = appendSorted(self.y, fillInclusion('y'))
-        self.y = removeClose(self.y)
 
-        #check overlap distances
-        #overlap = np.absolute(np.subtract(self.y[0:-1], self.x[1:]))
-        #print(overlap)
+        if len(self.targets) > 0:
+            self.y = appendSorted(self.y, functionMesh('y'))
+            self.y = appendSorted(self.y, closestFit('y'))
+            self.y = appendSorted(self.y, fillInclusion('y'))
+            self.y = removeClose(self.y)
+        self.y = appendSorted(self.y, closestFit('y'))
+
         self.built = True
 
 if __name__ == '__main__':
     g = Grid(20, 20, 5)
-    g.addInclusion(5,15,0.5)
-    g.addInclusion(15,5,0.5)
-    g.buildMesh(lambda x: 0.2*x, 0.15)
+    g.buildMesh()
     print(g.x)
