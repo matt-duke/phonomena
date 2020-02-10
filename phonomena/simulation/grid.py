@@ -158,8 +158,8 @@ class Grid:
         self.x = appendSorted(self.x, self.size_x)
         if len(self.targets) > 0:
             signals.status.emit("Area around inclusion regions...")
-            #self.x = appendSorted(self.x, functionMesh('x'))
-            #signals.status.emit("Filling inclusion regions...")
+            self.x = appendSorted(self.x, functionMesh('x'))
+            signals.status.emit("Filling inclusion regions...")
             self.x = appendSorted(self.x, fillInclusion('x'))
             self.x = removeClose(self.x)
         signals.status.emit("X mesh completed...")

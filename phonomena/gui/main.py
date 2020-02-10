@@ -69,7 +69,6 @@ class Main(QWidget):
         self.vlayout.addLayout(bottomHLayout)
 
     def buildMesh(self):
-         print("build mesh")
          self.meshpool.clear()
          worker = Worker(common.mesh.buildMesh, callback_fns=self.window.callback_fns)
          worker.signals.finished.connect(self.mesh_widget.drawGrid)

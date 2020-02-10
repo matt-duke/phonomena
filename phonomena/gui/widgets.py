@@ -20,6 +20,7 @@ class MeshSettings(QGridLayout):
         self.inclusions.setHorizontalHeaderLabels(['X', 'Y', 'R'])
         self.inclusions.horizontalHeader().setStretchLastSection(True)
         self.inclusions.cellChanged.connect(self.meshButtonClick)
+        #self.inclusions.clicked.connect(self.addInclusion)
 
         self.x_width.valueChanged.connect(self.meshButtonClick)
         self.y_width.valueChanged.connect(self.meshButtonClick)
@@ -58,6 +59,10 @@ class MeshSettings(QGridLayout):
         self.slope.blockSignals(bool)
         self.min_d.blockSignals(bool)
         self.inclusions.blockSignals(bool)
+
+    def addInclusion(self):
+        print("click")
+        self.inclusions.insertRow(self.inclusions.rowCount())
 
     def refresh(self):
         self.blockEvents(True)
