@@ -21,26 +21,23 @@ class Grid:
 
     def __init__(self, size_x, size_y, size_z):
 
-        self.size_x = 11
-        self.size_y = 10
-        self.size_z = 10
+        self.size_x = size_x
+        self.size_y = size_y
+        self.size_z = size_z
 
         self.min_d = 0.1
 
         self.slope = 0.5
-        self.spacing_fn = lambda x: x * self.slope
+        self.spacing_fn = lambda x: abs(x * self.slope)
 
-        self.default_dx = 1
-        self.default_dy = 1
+        self.max_dx = 1
+        self.max_dy = 1
 
         self.x = np.array((), dtype=np.float)
         self.y = np.array((), dtype=np.float)
 
         self.trgt_dtype=np.dtype([('x','f'), ('y','f'), ('r','f')])
         self.targets = np.empty((0,0), self.trgt_dtype)
-
-        self.addInclusion(1, 1, 1)
-
 
     def clearMesh(self):
         self.x = np.array((), dtype=np.float)
@@ -84,10 +81,10 @@ class Grid:
         def functionMesh(axis):
             axis = axis.lower()
             assert axis == 'x' or axis == 'y'
-            default_d = {'x': self.default_dx, 'y': self.default_dy}[axis]
+            max_d = {'x': self.max_dx, 'y': self.max_dy}[axis]
             size = {'x': self.size_x, 'y': self.size_y}[axis]
             global_mesh = {'x': self.x, 'y': self.y}[axis]
-            fine_mesh = fineMesh(default_d)
+            fine_mesh = fineMesh(max_d)
             t = np.sort(self.targets, order=axis)
             mesh = np.array(())
             # Add mesh to right and left of inclusion region
@@ -126,10 +123,10 @@ class Grid:
             axis = axis.lower()
             assert axis == 'x' or axis == 'y'
             global_mesh = {'x': self.x, 'y': self.y}[axis]
-            default_d = {'x': self.default_dx, 'y': self.default_dy}[axis]
+            max_d = {'x': self.max_dx, 'y': self.max_dy}[axis]
             mesh = np.array(())
             for i in range(1, len(global_mesh)):
-                n = int(round(abs(global_mesh[i] - global_mesh[i-1]) / default_d)) - 1
+                n = int(round(abs(global_mesh[i] - global_mesh[i-1]) / max_d)) - 1
                 if n > 0:
                     fn = lambda var: abs(global_mesh[i] - global_mesh[i-1]) / n * (var+1) + global_mesh[i-1]
                     mesh = appendSorted(mesh, np.fromfunction(fn, (n,)))

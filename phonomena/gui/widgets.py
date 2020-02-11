@@ -2,6 +2,50 @@ import common
 from PyQt5 import QtWidgets, QtGui, QtCore
 from PyQt5.QtWidgets import *
 
+
+class InclusionTable(QtWidgets.QTableWidget):
+    def __init__(self):
+        super().__init__()
+
+        self.setColumnCount(3)
+        self.setHorizontalHeaderLabels(['X', 'Y', 'R'])
+        self.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.Stretch)
+
+        self.setContextMenuPolicy(QtCore.Qt.ActionsContextMenu)
+
+        addAction = QtWidgets.QAction("Add..", self)
+        removeAction = QtWidgets.QAction("Remove..", self)
+        addAction.triggered.connect(self.blankRow)
+        removeAction.triggered.connect(self.removeCurrentRow)
+        self.addAction(addAction)
+        self.addAction(removeAction)
+
+    def removeCurrentRow(self):
+        i = self.currentRow()
+        self.removeRow(i)
+
+    def blankRow(self):
+        self.blockSignals(True)
+        self.addItem(common.mesh.size_x/2, common.mesh.size_y/2,1)
+        self.blockSignals(False)
+        #self.cellChanged.emit(0,0)
+
+    def addItem(self,x,y,r):
+        i = self.rowCount()
+        self.insertRow(i)
+
+        nums = (x,y,r)
+        for j in range(len(nums)):
+            item = QtWidgets.QTableWidgetItem()
+            item.setData(QtCore.Qt.EditRole, float(nums[j]))
+            self.setItem(i, j, item)
+
+    def getRow(self, i):
+        x = self.item(i, 0).text()
+        y = self.item(i, 1).text()
+        r = self.item(i, 2).text()
+        return x,y,r
+
 class MeshSettings(QGridLayout):
     def __init__(self, main_window):
         super().__init__()
@@ -15,11 +59,7 @@ class MeshSettings(QGridLayout):
         self.max_dy = QtWidgets.QDoubleSpinBox()
         self.min_d = QtWidgets.QDoubleSpinBox()
         self.slope = QtWidgets.QDoubleSpinBox()
-        self.inclusions = QtWidgets.QTableWidget()
-        self.inclusions.setColumnCount(3)
-        self.inclusions.setHorizontalHeaderLabels(['X', 'Y', 'R'])
-        self.inclusions.horizontalHeader().setStretchLastSection(True)
-        self.inclusions.cellChanged.connect(self.meshButtonClick)
+        self.inclusions = InclusionTable()
         #self.inclusions.clicked.connect(self.addInclusion)
 
         self.x_width.valueChanged.connect(self.meshButtonClick)
@@ -28,7 +68,7 @@ class MeshSettings(QGridLayout):
         self.max_dy.valueChanged.connect(self.meshButtonClick)
         self.slope.valueChanged.connect(self.meshButtonClick)
         self.min_d.valueChanged.connect(self.meshButtonClick)
-        #self.inclusions.currentIndexChanged.connect()
+        self.inclusions.cellChanged.connect(self.meshButtonClick)
 
         #self.mesh_button = QtWidgets.QPushButton('Mesh')
         #self.mesh_button.clicked.connect(self.meshButtonClick)
@@ -47,8 +87,10 @@ class MeshSettings(QGridLayout):
         self.addWidget(self.min_d,5,1)
         self.addWidget(QLabel("Slope:"),6,0)
         self.addWidget(self.slope,6,1)
-        self.addWidget(QLabel("Inclusions:"),7,0,1,2)
+        self.addWidget(QLabel("Inclusion regions:"),7,0,1,2)
         self.addWidget(self.inclusions,8,0,1,2)
+
+        self.setVerticalSpacing(25)
         #self.addWidget(self.mesh_button,7,1)
 
     def blockEvents(self, bool):
@@ -60,17 +102,13 @@ class MeshSettings(QGridLayout):
         self.min_d.blockSignals(bool)
         self.inclusions.blockSignals(bool)
 
-    def addInclusion(self):
-        print("click")
-        self.inclusions.insertRow(self.inclusions.rowCount())
-
     def refresh(self):
         self.blockEvents(True)
         self.x_width.setValue(common.mesh.size_x)
         self.y_width.setValue(common.mesh.size_y)
         self.z_width.setValue(common.mesh.size_z)
-        self.max_dx.setValue(common.mesh.default_dx)
-        self.max_dy.setValue(common.mesh.default_dy)
+        self.max_dx.setValue(common.mesh.max_dx)
+        self.max_dy.setValue(common.mesh.max_dy)
         self.min_d.setValue(common.mesh.min_d)
         self.min_d.setMinimum(0.1)
         self.min_d.setMaximum(min((self.max_dx.value(),self.max_dy.value())))
@@ -83,32 +121,24 @@ class MeshSettings(QGridLayout):
         self.inclusions.clearSpans()
         num_rows = len(common.mesh.targets)
         for i in range(num_rows):
-            self.inclusions.insertRow(i)
-            x = QtWidgets.QTableWidgetItem(str(common.mesh.targets[i]['x']))
-            y = QtWidgets.QTableWidgetItem(str(common.mesh.targets[i]['y']))
-            r = QtWidgets.QTableWidgetItem(str(common.mesh.targets[i]['r']))
-            self.inclusions.setItem(i, 0, x)
-            self.inclusions.setItem(i, 1, y)
-            self.inclusions.setItem(i, 2, r)
+            t = common.mesh.targets[i]
+            self.inclusions.addItem(t['x'],t['y'],t['r'])
         self.blockEvents(False)
 
     def updateMesh(self):
         common.mesh.size_x = self.x_width.value()
         common.mesh.size_y = self.y_width.value()
         common.mesh.size_z = self.z_width.value()
-        common.mesh.default_dx = self.max_dx.value()
-        common.mesh.default_dy = self.max_dy.value()
+        common.mesh.max_dx = self.max_dx.value()
+        common.mesh.max_dy = self.max_dy.value()
         common.mesh.min_d = self.min_d.value()
         common.mesh.slope = self.slope.value()
 
         common.mesh.clearInclusions()
         num_rows = self.inclusions.rowCount()
-        if num_rows > 0:
-            for i in range(num_rows):
-                x = self.inclusions.item(i, 0).text()
-                y = self.inclusions.item(i, 1).text()
-                r = self.inclusions.item(i, 2).text()
-                common.mesh.addInclusion(x,y,r)
+        for i in range(num_rows):
+            x,y,r = self.inclusions.getRow(i)
+            common.mesh.addInclusion(x,y,r)
 
     def meshButtonClick(self):
         self.updateMesh()
@@ -119,7 +149,8 @@ class Grid(QtWidgets.QGraphicsScene):
         super().__init__()
 
         self.main_window = main_window
-        self.lines = []
+        self.obj = []
+        self.circles = []
         self.scale = 20
         self.min_scale = 10
         self.max_scale = 50
@@ -150,20 +181,27 @@ class Grid(QtWidgets.QGraphicsScene):
         pen = QtGui.QPen(QtGui.QColor(0,0,0), 1, QtCore.Qt.SolidLine)
 
         for x in arr_x:
-            self.lines.append(self.addLine(x,0,x,height,pen))
+            self.obj.append(self.addLine(x,0,x,height,pen))
 
         for y in arr_y:
-            self.lines.append(self.addLine(0,y,width,y,pen))
+            self.obj.append(self.addLine(0,y,width,y,pen))
+
+        pen = QtGui.QPen(QtGui.QColor(255,0,0), 2, QtCore.Qt.SolidLine)
+        for t in common.mesh.targets:
+            x = (t['x']-t['r'])*self.scale
+            y = (t['y']-t['r'])*self.scale
+            d = 2*t['r']*self.scale
+            self.obj.append(self.addEllipse(x, y, d, d, pen))
 
     def setVisible(self,visible=True):
-        for line in self.lines:
+        for line in self.obj:
             line.setVisible(visible)
 
     def deleteGrid(self):
-        for line in self.lines:
+        for line in self.obj:
             self.removeItem(line)
-        del self.lines[:]
+        del self.obj[:]
 
     def setOpacity(self,opacity):
-        for line in self.lines:
+        for line in self.obj:
             line.setOpacity(opacity)

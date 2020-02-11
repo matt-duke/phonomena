@@ -43,6 +43,7 @@ class Main(QWidget):
         # Widgets
         self.mesh_widget = widgets.Grid(self)
         self.mesh_view = QGraphicsView()
+        self.mesh_view.setRenderHints(QPainter.Antialiasing)
         self.mesh_view.setScene(self.mesh_widget)
 
         self.settings = QGroupBox("Settings")
