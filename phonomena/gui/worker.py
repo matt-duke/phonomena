@@ -1,6 +1,7 @@
 from PyQt5 import QtCore
 from PyQt5.QtCore import pyqtSignal, pyqtSlot
 import traceback, sys
+from threading import Event
 
 class WorkerSignals(QtCore.QObject):
     '''
@@ -9,7 +10,7 @@ class WorkerSignals(QtCore.QObject):
     Supported signals are:
 
     finished
-        No data
+        No data - function finished
 
     error
         `tuple` (exctype, value, traceback.format_exc() )
@@ -20,12 +21,17 @@ class WorkerSignals(QtCore.QObject):
     progress
         `int` indicating % progress
 
+    quit
+        No data - force close thread
+
     '''
     finished = pyqtSignal()
     error = pyqtSignal(tuple)
+    warning = pyqtSignal(tuple)
     result = pyqtSignal(object)
     progress = pyqtSignal(int)
     status = pyqtSignal(str)
+    quit = Event()
 
 class Worker(QtCore.QRunnable):
     '''
@@ -41,7 +47,7 @@ class Worker(QtCore.QRunnable):
 
     '''
 
-    def __init__(self, fn, callback_fns={}, *args, **kwargs):
+    def __init__(self, fn, *args, **kwargs):
         super(Worker, self).__init__()
 
         # Store constructor arguments (re-used for processing)
@@ -57,6 +63,7 @@ class Worker(QtCore.QRunnable):
         self.setAutoDelete(True)
 
         try:
+            callback_fns = self.kwargs['callback_fns']
             self.signals.error.connect(callback_fns['error'])
             self.signals.status.connect(callback_fns['status'])
             self.signals.progress.connect(callback_fns['progress'])

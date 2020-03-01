@@ -36,7 +36,7 @@ def main():
     ims = []
 
     for tt in range(conf.num_steps):
-        g.uz[0, :, 0] = s.update_ricker(tt)
+        g.uz[0, :, 0] = s.update_ricker(tt) #applied to input face of simulation
         s.update_T()
         s.update_T_BC()
         s.update_u()
