@@ -1,6 +1,10 @@
 import common
+import json
+import logging
 from PyQt5 import QtWidgets, QtGui, QtCore
 from PyQt5.QtWidgets import *
+
+logger = logging.getLogger(__name__)
 
 
 class Solver(QGroupBox):
@@ -17,6 +21,8 @@ class Solver(QGroupBox):
         self.solvers.currentIndexChanged.connect(self.importSolver)
         self.lbl = QLabel()
         self.description = QTextEdit()
+        self.cfg_str = QLineEdit()
+        self.cfg_str.editingFinished.connect(self.updateSettingsString)
         hlayout = QHBoxLayout()
         hlayout.addWidget(self.lbl)
         hlayout.addWidget(self.solvers)
@@ -28,13 +34,15 @@ class Solver(QGroupBox):
         self.run_button.setText("Run simulation")
         self.run_button.clicked.connect(self.runButtonClick)
         self.layout.addLayout(hlayout,0,0)
-        self.layout.addWidget(self.description,1,0,2,1)
+        self.layout.addWidget(self.description,1,0,3,1)
         self.layout.addWidget(self.test_button,0,1)
         self.layout.addWidget(self.test_result,1,1)
-        self.layout.addWidget(self.run_button,2,1)
+        self.layout.addWidget(self.cfg_str,2,1)
+        self.layout.addWidget(self.run_button,3,1)
         self.layout.setColumnStretch(0, 2)
         self.layout.setColumnStretch(1, 1)
         self.layout.setHorizontalSpacing(80)
+        self.layout.setVerticalSpacing(10)
         margin = 30
         self.layout.setContentsMargins(margin,margin,margin,margin)
 
@@ -48,6 +56,19 @@ class Solver(QGroupBox):
             self.test_result.setText("FAILED{}".format(msg))
             self.test_result.setStyleSheet("QLabel {background-color: red}")
 
+    def updateSettingsString(self):
+        txt = self.cfg_str.text()
+        try:
+            cfg = json.loads(txt)
+            common.solver.cfg = cfg
+            logger.info("{} cfg changed to {}".format(common.solver.name, common.solver.cfg))
+        except json.JSONDecodeError as e:
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Critical)
+            msg.setText(str(e))
+            msg.setWindowTitle("Error")
+            msg.exec_()
+
     def runButtonClick(self):
         self.main_widget.runSimulation()
 
@@ -56,19 +77,22 @@ class Solver(QGroupBox):
             self.solvers.addItem(c.name)
 
     def importSolver(self):
-        self.test_result.setText("")
+        self.test_result.setText("NOT TESTED")
         self.test_result.setStyleSheet("QLabel {background-color: none}")
+        old_solver = common.solver
         try:
             for s in common.solver_list:
                 if s.name == self.solvers.currentText():
                     common.solver = s
                     self.description.setText(s.description)
+                    self.cfg_str.setText(json.dumps(s.cfg))
                     break
             self.lbl.setText("<p>&#10004;</p>") # check mark
 
         except Exception as e:
             self.lbl.setText("<p><b>X</b></p>") # X mark
             self.description.setText(str(e))
+            common.solver = old_solver
 
 
 class Settings(QGroupBox):
@@ -86,7 +110,7 @@ class Settings(QGroupBox):
         self.steps.setMaximum(50000)
         self.steps.valueChanged.connect(self.update)
         self.courant = QDoubleSpinBox()
-        self.courant.setMinimum(0.1)
+        self.courant.setMinimum(0.001)
         self.courant.setMaximum(2)
         self.courant.setSingleStep(0.1)
         self.courant.valueChanged.connect(self.update)
@@ -110,7 +134,7 @@ class Settings(QGroupBox):
 
     def update(self):
         common.cfg['simulation']['steps'] = self.steps.value()
-        common.cfg['simulation']['courant'] = self.courant.value()
+        common.material.max_c = self.courant.value()
 
 class Material(QGroupBox):
     def __init__(self, main_widget):
@@ -137,7 +161,7 @@ class Material(QGroupBox):
 
     def setMaterial(self):
         self.key = self.materials.currentText()
-        properties = common.cfg['material']['properties'][self.key]
+        properties = common.material.properties[self.key]
         self.density.setText("{:.2f}".format(properties['p']))
         stress = properties['c']
 
@@ -148,7 +172,7 @@ class Material(QGroupBox):
 
         for i in range(len(stress)):
             for j in range(len(stress[i])):
-                txt = "{:.2f}".format(stress[i][j])
+                txt = "{:.2f}".format(stress[i][j]*1e-10)
                 self.stress.addWidget(QLabel(txt),i,j,alignment=QtCore.Qt.AlignCenter)
 
     def refresh(self):
@@ -167,9 +191,16 @@ class PrimaryMaterial(Material):
         self.setTitle("Primary")
         self.key = common.cfg['material']['primary']
 
+    def setMaterial(self):
+        super().setMaterial()
+        common.material.setPrimary(self.key)
 
 class SecondaryMaterial(Material):
     def __init__(self, main_widget):
         super().__init__(main_widget)
         self.setTitle("Secondary")
         self.key = common.cfg['material']['secondary']
+
+    def setMaterial(self):
+        super().setMaterial()
+        common.material.setSecondary(self.key)

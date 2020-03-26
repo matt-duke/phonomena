@@ -31,7 +31,7 @@ class WorkerSignals(QtCore.QObject):
     result = pyqtSignal(object)
     progress = pyqtSignal(int)
     status = pyqtSignal(str)
-    quit = Event()
+    quit = pyqtSignal()
 
 class Worker(QtCore.QRunnable):
     '''
@@ -86,5 +86,4 @@ class Worker(QtCore.QRunnable):
         else:
             self.signals.result.emit(result)  # Return the result of the processing
         finally:
-            self.signals.status.emit("Done.")
             self.signals.finished.emit()  # Done

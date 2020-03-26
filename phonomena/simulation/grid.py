@@ -14,60 +14,68 @@ if __name__ == '__main__':
 
 import numpy as np
 import math as m
+from threading import Lock
 
 from gui.worker import WorkerSignals
 
 class Grid:
 
-    def __init__(self, size_x, size_y, size_z):
-
-        self.size_x = int(size_x)
-        self.size_y = int(size_y)
-        self.size_z = int(size_z)
-
-        self.min_d = 0.1
-
-        self.slope = 0.5
-        self.spacing_fn = lambda x: abs(x * self.slope)
+    def __init__(self):
+        self.lock = Lock()
+        self.x = np.array((), dtype=np.float)
+        self.y = np.array((), dtype=np.float)
+        self.z = np.array((), dtype=np.float)
 
         self.max_dx = 1
         self.max_dy = 1
         self.max_dz = 1
 
-        self.x = np.array((), dtype=np.float)
-        self.y = np.array((), dtype=np.float)
-        self.z = np.array((), dtype=np.float)
-
         self.trgt_dtype=np.dtype([('x','f'), ('y','f'), ('z','f'), ('r','f')])
         self.targets = np.empty((0,0), self.trgt_dtype)
+        self.min_d = 0.1
+        self.slope = 0.5
+
+    def init(self, size_x, size_y, size_z, spacing_fn=None):
+
+        self.size_x = int(size_x)
+        self.size_y = int(size_y)
+        self.size_z = int(size_z)
+
+        if spacing_fn == None:
+            self.spacing_fn = lambda x: abs(x * self.slope)
+        else:
+            self.spacing_fn = spacing_fn
+
+        self.buildMesh()
+        self.update()
 
     def update(self):
         x = self.x.size
         y = self.y.size
         z = self.z.size
 
-        self.ux = np.zeros((x-1, y, z))
-        self.uy = np.zeros((x, y-1, z))
-        self.uz = np.zeros((x, y, z-1))
+        self.ux = np.zeros((x-1, y, z), dtype=np.float64)
+        self.uy = np.zeros((x, y-1, z), dtype=np.float64)
+        self.uz = np.zeros((x, y, z-1), dtype=np.float64)
 
-        self.ux_new = np.zeros((x-1, y, z))
-        self.uy_new = np.zeros((x, y-1, z))
-        self.uz_new = np.zeros((x, y, z-1))
+        self.ux_new = np.zeros((x-1, y, z), dtype=np.float64)
+        self.uy_new = np.zeros((x, y-1, z), dtype=np.float64)
+        self.uz_new = np.zeros((x, y, z-1), dtype=np.float64)
 
-        self.ux_old = np.zeros((x-1, y, z))
-        self.uy_old = np.zeros((x, y-1, z))
-        self.uz_old = np.zeros((x, y, z-1))
+        self.ux_old = np.zeros((x-1, y, z), dtype=np.float64)
+        self.uy_old = np.zeros((x, y-1, z), dtype=np.float64)
+        self.uz_old = np.zeros((x, y, z-1), dtype=np.float64)
 
-        self.ux_temp = np.zeros((x-1, y, z))
-        self.uy_temp = np.zeros((x, y-1, z))
-        self.uz_temp = np.zeros((x, y, z-1))
+        self.ux_temp = np.zeros((x-1, y, z), dtype=np.float64)
+        self.uy_temp = np.zeros((x, y-1, z), dtype=np.float64)
+        self.uz_temp = np.zeros((x, y, z-1), dtype=np.float64)
 
-        self.T1 = np.zeros((x, y, z))
-        self.T2 = np.zeros((x, y, z))
-        self.T3 = np.zeros((x, y, z))
-        self.T4 = np.zeros((x, y-1, z-1))
-        self.T5 = np.zeros((x-1, y, z-1))
-        self.T6 = np.zeros((x-1, y-1, z))
+        self.T1 = np.zeros((x, y, z), dtype=np.float64)
+        self.T2 = np.zeros((x, y, z), dtype=np.float64)
+        self.T3 = np.zeros((x, y, z), dtype=np.float64)
+        self.T4 = np.zeros((x, y-1, z-1), dtype=np.float64)
+        self.T5 = np.zeros((x-1, y, z-1), dtype=np.float64)
+        self.T6 = np.zeros((x-1, y-1, z), dtype=np.float64)
 
         # full dx (n-1)
         self.fdx = (self.x[1:] - self.x[:-1]).reshape((x-1,1,1))
@@ -93,23 +101,26 @@ class Grid:
     def addInclusion(self, x, y, r, z=None):
         if z == None:
             z = self.size_z
-        #dtype=np.dtype([('x','f'), ('y','f'), ('r','f')])
         target = np.array([(x,y,z,r)], dtype=self.trgt_dtype)
         self.targets = np.append(self.targets, target)
 
     def inclusionIndices(self):
-        Ixy = np.array(())
-        Iz = np.array(())
-        X, Y = np.meshgrid(self.x, self.y)
+        #import sys
+        #np.set_printoptions(threshold=sys.maxsize)
+        I = list()
+        Y, X = np.meshgrid(self.y, self.x)
         for t in self.targets:
+            #Ixy = np.empty((0,2), dtype=np.int)
+            #Iz = np.empty((1,0), dtype=np.int)
             Xsq = np.square(np.subtract(X, t['x']))
             Ysq = np.square(np.subtract(Y, t['y']))
             R = np.sqrt(np.add(Xsq, Ysq))
             xy = np.array(np.where(R<=t['r'])).transpose()
-            np.append(Ixy, xy)
-            z = np.array(np.where(self.z <= t['z']))
-            np.append(Iz, z)
-        return Ixy, Iz
+            assert np.all(xy < R.shape)
+            z = np.array(np.where(self.z<=t['z'])).flatten()
+            I.append((xy, z))
+            #Iz = np.append(Iz, z, axis=1)
+        return I
 
     def buildMesh(self, *args, **kwargs):
 

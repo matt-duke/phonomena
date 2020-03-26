@@ -21,120 +21,15 @@ from PyQt5.QtWidgets import *
 
 import common
 from gui import widgets
-from gui.worker import Worker
 
-class Main(QWidget):
-    def __init__(self, window):
-        super().__init__()
+import logging
+logger = logging.getLogger(__name__)
 
-        self.window = window
+# Restore PyQt5 debug behaviour (print exception) https://stackoverflow.com/questions/33736819/pyqt-no-error-msg-traceback-on-exit
+def except_hook(cls, exception, traceback):
+    sys.__excepthook__(cls, exception, traceback)
 
-        self.gui_update_pool = QtCore.QThreadPool()
-        self.gui_update_pool.setExpiryTimeout(500)
-        self.gui_update_pool.setMaxThreadCount(2)
-
-        self.simpool = QtCore.QThreadPool()
-        self.simpool.setMaxThreadCount(1)
-
-        self.initUI()
-        self.window.status_bar.showMessage("Ready.")
-
-    def initUI(self):
-
-        # Add mesh tab
-        self.xy_mesh_view = widgets.mesh.XYGridView(self)
-        self.yz_mesh_view = widgets.mesh.YZGridView(self)
-        self.mesh_settings = widgets.mesh.Settings(self)
-
-        # Mesh widget
-        self.mesh = QWidget()
-        mesh_tab_widget = QTabWidget()
-        mesh_tab_widget.addTab(self.xy_mesh_view, "XY")
-        mesh_tab_widget.addTab(self.yz_mesh_view, "YZ")
-        mesh_layout = QHBoxLayout()
-        mesh_layout.setSpacing(20)
-        m = 20
-        mesh_layout.setContentsMargins(m,m,m,m)
-        mesh_layout.addWidget(self.mesh_settings, 1)
-        mesh_layout.addWidget(mesh_tab_widget, 2)
-        self.mesh.setLayout(mesh_layout)
-
-        # Add simulation tab
-        self.sim = QWidget()
-        self.sim_settings = widgets.simulation.Settings(self)
-        self.prim_material = widgets.simulation.PrimaryMaterial(self)
-        self.sec_material = widgets.simulation.SecondaryMaterial(self)
-        self.sim_solver = widgets.simulation.Solver(self)
-
-        # Add results tab
-        self.plot = QWidget()
-        self.ux_plot = widgets.results.Plot(self)
-        self.plot.setLayout(self.ux_plot)
-
-        vlayout = QVBoxLayout()
-        m = 20
-        vlayout.setContentsMargins(m,m,m,m)
-        hlayout = QHBoxLayout()
-        hlayout.setSpacing(50)
-        hlayout.addWidget(self.sim_settings, 1)
-        hlayout.addWidget(self.prim_material, 1)
-        hlayout.addWidget(self.sec_material, 1)
-        vlayout.addLayout(hlayout, 2)
-        vlayout.addWidget(self.sim_solver, 1)
-        self.sim.setLayout(vlayout)
-
-        main_tab_widget = QTabWidget()
-        main_layout = QVBoxLayout()
-        main_tab_widget.addTab(self.mesh, "Meshing")
-        main_tab_widget.addTab(self.sim, "Simulation")
-        main_tab_widget.addTab(self.plot, "Results")
-
-        main_layout.addWidget(main_tab_widget)
-        main_layout.addWidget(self.window.progress_bar)
-        self.setLayout(main_layout)
-
-    def drawResults(self):
-        worker = Worker(self.ux_plot.refresh, callback_fns=self.window.callback_fns)
-        self.gui_update_pool.start(worker)
-
-    def buildMesh(self):
-        def drawGrids():
-            self.xy_mesh_view.drawGrid()
-            self.yz_mesh_view.drawGrid()
-
-        self.gui_update_pool.clear()
-        worker = Worker(common.grid.buildMesh, callback_fns=self.window.callback_fns)
-        worker.signals.finished.connect(drawGrids)
-        self.gui_update_pool.start(worker)
-
-    def runSimulation(self):
-        time_steps = common.cfg['simulation']['steps']
-        common.solver.init(
-            grid = common.grid,
-            material = common.material
-        )
-        worker = Worker(
-            fn = common.solver.run,
-            steps=time_steps,
-            callback_fns=self.window.callback_fns
-        )
-
-        worker.signals.finished.connect(self.drawResults)
-        self.simpool.start(worker)
-
-    def refresh(self):
-        self.mesh_settings.refresh()
-        self.buildMesh()
-        self.sim_settings.refresh()
-        self.prim_material.refresh()
-        self.sec_material.refresh()
-        self.sim_solver.refresh()
-
-    def closeEvent(self, event):
-        if can_exit:
-            event.accept() # let the window close
-        else:
-            event.ignore()
+sys.excepthook = except_hook
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -154,17 +49,24 @@ class MainWindow(QMainWindow):
                              'error': self.showError,
                              'progress': self.updateProgress}
 
-        self.main = Main(self)
+        self.main = widgets.main_widget.Main(self)
         self.setCentralWidget(self.main)
         self.show()
         self.main.refresh()
 
+    def closeEvent(self, event):
+        self.main.cancelSimulation()
+        if True:
+            event.accept()
+        else:
+            event.ignore()
+
     def showError(self, err):
-        print(err)
+        logger.error(err)
         msg = QMessageBox()
         msg.setIcon(QMessageBox.Critical)
-        msg.setText(str(err[1]))
-        msg.setInformativeText(str(err[2]))
+        msg.setText(str(type(err)))
+        msg.setInformativeText(str(err))
         msg.setWindowTitle("Error")
         msg.exec_()
 
@@ -172,6 +74,7 @@ class MainWindow(QMainWindow):
         assert type(msg) == str
         #print(msg)
         self.status_bar.showMessage(msg)
+        logger.info(msg)
 
     def updateProgress(self, n):
         assert n >= 0 and n <= 100
@@ -193,7 +96,8 @@ class MainWindow(QMainWindow):
     def about(self):
         about = """<p>This program was developed for the ENPH 455 undergraduate thesis
         by Marc Cameron and extended by Matt Duke. It was designed to model acoustic wave
-        transmission using the FDTD simulation.</p>"""
+        transmission using the FDTD simulation.
+        <br><br>Version: {}<br>Build: {}</p>""".format(common.info.version, common.info.build)
         QMessageBox.about(self, "Phonomena", about)
 
     def openRepo(self):

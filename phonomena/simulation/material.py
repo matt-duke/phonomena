@@ -12,31 +12,29 @@ if __name__ == '__main__':
         pass
 
 import numpy as np
+import logging
+from threading import Lock
+logger = logging.getLogger(__name__)
 
 class Material:
 
-    def __init__(self, grid, propeties):
-        self.grid = grid
-        self.propeties = propeties
-
+    def __init__(self):
         self.primary = None
         self.secondary = None
 
-        self.C = np.array(())
-        self.P = np.array(())
-
-        self.c_max = 1 #courant number
+        self.c_max = 0.5 #courant number
         self.dt = 0
 
         self.C = np.zeros((0,0,0,6,6))
         self.P = np.zeros((0,0,0))
 
-        self.T2ux = np.zeros((0,0,0))
-        self.T2uy = np.zeros((0,0,0))
-        self.T2uz = np.zeros((0,0,0))
-        self.ux2T = 0
-        self.uy2T = 0
-        self.uz2T = 0
+        self.lock = Lock()
+
+    def init(self, grid, properties):
+        self.grid = grid
+        self.properties = properties
+        for key, val in self.properties.items():
+            val['c'] = np.array(val['c'])*1e10
 
     def update(self):
         self.C = np.zeros((self.grid.x.size, self.grid.y.size, self.grid.z.size, 6, 6))
@@ -46,19 +44,26 @@ class Material:
         self.setConstants()
 
     def setConstants(self):
-        self.C[:,:,:] = np.array(self.primary['c'])*1e10
+        self.C[:,:,:] = np.array(self.primary['c'])
         self.P[:,:,:] = float(self.primary['p'])
 
-        Ixy, Iz = self.grid.inclusionIndices()
-        for iz in Iz:
-            for ix, iy in Ixy:
-                self.C[ix,iy,iz] = np.array(self.secondary['c'])
-                self.P[ix,iy,iz] = float(self.secondary['p'])
-                #modify T2u values
+        I = self.grid.inclusionIndices()
+        for xy, z in I:
+            for x, y in xy:
+                self.C[x,y,z] = np.array(self.secondary['c'])
+                self.P[x,y,z] = float(self.secondary['p'])
 
-    def setMaterials(self, m1, m2):
-        self.primary = self.propeties[m1]
-        self.secondary = self.propeties[m2]
+    def setPrimary(self, m):
+        if m in self.properties.keys():
+            self.primary = self.properties[m]
+        else:
+            raise Exception()
+
+    def setSecondary(self, m):
+        if m in self.properties.keys():
+            self.secondary = self.properties[m]
+        else:
+            raise Exception()
 
     ''' Set simulation timestep based on Courant–Friedrichs–Lewy condition '''
     def setTimeStep(self):
@@ -68,16 +73,14 @@ class Material:
             vl = np.sqrt(c11/p) # parallel
             vt = np.sqrt(c44/p) # transverse
             vmax = max((vl, vt))
-            dtx = self.grid.fdx[:,0,0]*self.c_max/vmax
-            dty = self.grid.fdy[0,:,0]*self.c_max/vmax
-            dtz = self.grid.fdz[0,0,:]*self.c_max/vmax
-            return np.amin(np.concatenate((dtx, dty, dtz)))
+            dxmin = min((np.amin(self.grid.fdx),np.amin(self.grid.fdy), np.amin(self.grid.fdz)))
+            dt = self.c_max*dxmin/vmax
+            return dt
 
         dt1 = calcDt(self.primary['c'], self.primary['p'])
         dt2 = calcDt(self.secondary['c'], self.secondary['p'])
         self.dt = min((dt1, dt2))
-        print(self.dt)
-        self.dt = 0.00001
+
 
 if __name__ == '__main__':
     import common

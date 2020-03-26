@@ -24,16 +24,17 @@ class InclusionTable(QtWidgets.QTableWidget):
     def removeCurrentRow(self):
         i = self.currentRow()
         self.removeRow(i)
+        self.cellChanged.emit(0,0)
 
     def blankRow(self):
         self.blockSignals(True)
         self.addItem(1,1,1,1)
         self.blockSignals(False)
-        #self.cellChanged.emit(0,0)
 
     def addItem(self,x,y,z,r):
         i = self.rowCount()
         self.insertRow(i)
+        self.cellChanged.emit(0,0)
 
         nums = (x,y,z,r)
         for j in range(len(nums)):
@@ -172,8 +173,8 @@ class GridClass(QtWidgets.QGraphicsScene):
         self.main_widget = main_widget
         self.obj = []
         self.circles = []
-        self.scale = 20
-        self.min_scale = 10
+        self.scale = 10
+        self.min_scale = 5
         self.max_scale = 50
 
         self.setOpacity(1)

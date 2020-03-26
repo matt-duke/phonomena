@@ -58,7 +58,7 @@
     }
   },
   "simulation": {
-    "courant": 1.0,
-    "steps": 100
+    "courant": 0.5,
+    "steps": 10
   }
 }

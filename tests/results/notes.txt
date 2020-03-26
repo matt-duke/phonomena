@@ -1,0 +1,17 @@
+2000 -	threading (on): 23.6
+	threading (off): 17.64
+
+4000 -	threading (on): 40.44
+	threading (off): 36.6
+
+4500 (x5) - threading (on): 60.52
+	    threading (off): 63.1
+
+5000 (x5) - threading (on): 66.95
+	    threading (off): 72.53
+	    numba: 68.67 (large variability)
+	    numba (mod.): 60ish
+		
+10000 (x5) - default: 285.26
+	     numba: 254.18
+	     threading: 243.32
