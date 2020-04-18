@@ -7,9 +7,7 @@ from simulation import base_solver
 import logging
 logger = logging.getLogger(__name__)
 
-cfg = {
-    "use_threading": True,
-}
+cfg = {'num_threads': 6}
 
 class Solver(base_solver.BaseSolver):
 
@@ -17,19 +15,20 @@ class Solver(base_solver.BaseSolver):
         super().__init__(logger)
         self.name = "threading"
         self.description = "<p></p>"
-        self.cfg = cfg
+        self.cfg = {**cfg, **self.cfg}
 
     def init(self, grid, material, steps):
-        super().init(grid, material, steps)
+        cfg = self.cfg
 
         self.threads = []
         self.worker_queue = Queue()
-        num_threads = cpu_count()
-        for i in range(num_threads):
+        for i in range(cfg['num_threads']):
             t = threading.Thread(target=Solver.worker, args=(i, self.worker_queue))
             t.daemon = True
             t.start()
             self.threads.append(t)
+
+        super().init(grid, material, steps)
 
     @staticmethod
     def worker(i, q):
@@ -93,22 +92,14 @@ class Solver(base_solver.BaseSolver):
                 / g.fdx
             )
 
-        if not self.cfg['use_threading']:
-            T1(self.g, self.m)
-            T2(self.g, self.m)
-            T3(self.g, self.m)
-            T4(self.g, self.m)
-            T5(self.g, self.m)
-            T6(self.g, self.m)
-        else:
-            self.worker_queue.put((T1, (self.g, self.m)))
-            self.worker_queue.put((T2, (self.g, self.m)))
-            self.worker_queue.put((T3, (self.g, self.m)))
-            self.worker_queue.put((T4, (self.g, self.m)))
-            self.worker_queue.put((T5, (self.g, self.m)))
-            self.worker_queue.put((T6, (self.g, self.m)))
-            self.worker_queue.join()
-            assert self.worker_queue.empty()
+        self.worker_queue.put((T1, (self.g, self.m)))
+        self.worker_queue.put((T2, (self.g, self.m)))
+        self.worker_queue.put((T3, (self.g, self.m)))
+        self.worker_queue.put((T4, (self.g, self.m)))
+        self.worker_queue.put((T5, (self.g, self.m)))
+        self.worker_queue.put((T6, (self.g, self.m)))
+        self.worker_queue.join()
+        assert self.worker_queue.empty()
 
 
     def apply_T_tfbc(self):
@@ -143,19 +134,11 @@ class Solver(base_solver.BaseSolver):
                 * ((g.ux[:,1:,0] - g.ux[:,:-1,0]) / g.fdx[0,:,:] \
                 + (g.uy[1:,:,0] - g.uy[:-1,:,0]) / g.fdz[:,:,0])
 
-        if not self.cfg['use_threading']:
-            T1(self.g, self.m)
-            T2(self.g, self.m)
-            self.g.T3[1:-1,1:-1,0] = 0
-            T4(self.g, self.m)
-            T5(self.g, self.m)
-            T6(self.g, self.m)
-        else:
-            self.worker_queue.put((T1, (self.g, self.m)))
-            self.worker_queue.put((T2, (self.g, self.m)))
-            self.worker_queue.put((T4, (self.g, self.m)))
-            self.worker_queue.put((T5, (self.g, self.m)))
-            self.worker_queue.put((T6, (self.g, self.m)))
-            self.g.T3[1:-1,1:-1,0] = 0
-            self.worker_queue.join()
-            assert self.worker_queue.empty()
+        self.worker_queue.put((T1, (self.g, self.m)))
+        self.worker_queue.put((T2, (self.g, self.m)))
+        self.worker_queue.put((T4, (self.g, self.m)))
+        self.worker_queue.put((T5, (self.g, self.m)))
+        self.worker_queue.put((T6, (self.g, self.m)))
+        self.g.T3[1:-1,1:-1,0] = 0
+        self.worker_queue.join()
+        assert self.worker_queue.empty()

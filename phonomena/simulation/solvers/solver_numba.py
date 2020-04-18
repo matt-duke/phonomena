@@ -1,4 +1,4 @@
-from numba import jit
+from numba import njit
 
 from simulation import base_solver
 
@@ -6,9 +6,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 cfg = {
-    "nopython": True,
-    "nogil": False,
-    "cache": True
+    "cache": True,
+    "fastmath": True
 }
 
 class Solver(base_solver.BaseSolver):
@@ -17,7 +16,21 @@ class Solver(base_solver.BaseSolver):
         super().__init__(logger)
         self.name = "numba"
         self.description = "<p></p>"
-        self.cfg = cfg
+        global cfg
+        self.cfg = {**self.cfg, **cfg}
+        cfg = self.cfg
+
+    def run(self, *args, **kwargs):
+        global cfg
+        if cfg != self.cfg:
+            cfg = self.cfg
+            self.logger.debug("Recompiling numba funcs")
+            self.recompile()
+        super().run(*args, **kwargs)
+
+    def recompile(self):
+        update_T.recompile()
+        update_T_tfbc.recompile()
 
     def update_T(self):
 
@@ -49,7 +62,7 @@ class Solver(base_solver.BaseSolver):
         self.g.T6[:,:,0] = T6
 
 
-@jit(nopython=cfg['nopython'], nogil=cfg['nogil'], cache=cfg['cache'])
+@njit(cache=cfg['cache'], fastmath=cfg['fastmath'])
 def update_T(C, u, sd, fd):
     ux, uy, uz = u
     sdx, sdy, sdz = sd
@@ -100,7 +113,7 @@ def update_T(C, u, sd, fd):
     )
     return T1,T2,T3,T4,T5,T6
 
-@jit(nopython=cfg['nopython'], nogil=cfg['nogil'], cache=cfg['cache'])
+@njit(cache=cfg['cache'], fastmath=cfg['fastmath'])
 def update_T_tfbc(C, u, fd, sd):
     ux, uy, uz = u
     fdx, fdy, fdz = fd

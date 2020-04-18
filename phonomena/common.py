@@ -6,6 +6,11 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+try:
+    import simulation
+except:
+    from . import simulation
+
 class Info:
     version = 'none'
     build = 'none'
@@ -15,9 +20,10 @@ info = Info
 cfg = None
 grid = None
 material = None
-solver_list = []
+solver_dict = {}
 solver = None
 
+# Defines whether package has been bundled using PyInstaller
 DEBUG = hasattr(sys, 'frozen') and hasattr(sys, '_MEIPASS')
 
 if not DEBUG:
@@ -58,10 +64,12 @@ def configureLogger():
         l = logging.getLogger(m)
         l.setLevel(logging.WARNING)
 
-def set_tmpdir():
+def setTempdir():
     temp = Path.cwd().joinpath('tmp')
     if temp.is_dir():
         try:
+            print("clearing")
+            sys.stdout.flush()
             shutil.rmtree(temp)
             temp.mkdir()
         except Exception as e:
@@ -77,7 +85,7 @@ def importSolver(module):
     return solver
 
 def findSolvers():
-    solver_list = []
+    solver_dict = {}
 
     dir = os.listdir(SOLVER_DIR)
     for f in dir:
@@ -86,52 +94,14 @@ def findSolvers():
         f = f.replace('.py','')
         try:
             s = importSolver(f)
-            solver_list.append(s)
+            solver_dict[s.name] = s
         except Exception as e:
             logger.error("Error importing solver {}: {}".format(f, e))
-    return solver_list
+    return solver_dict
 
-def importSettings(path=SETTINGS_FILE):
-    global cfg
+def loadSettings(path=SETTINGS_FILE):
+    global cfg, grid, material, solver, solver_dict
     cfg = json.load(open(path))
-
-def updateCfg():
-    global cfg, grid, material
-
-    cfg['grid'] = {
-        "slope": grid.slope,
-        "max_dx": grid.max_dx,
-        "max_dy": grid.max_dy,
-        "max_dz": grid.max_dz,
-        "min_d": grid.min_d,
-        "size_x": grid.size_x,
-        "size_y": grid.size_y,
-        "size_z": grid.size_z,
-    }
-
-    cfg['inclusions'] = [ {'x': row[0], 'y': row[1], 'z': row[2], 'r':row[3]} for row in grid.targets ]
-
-    cfg['simulation']['courant'] = material.c_max
-
-def saveSettings(path):
-    updateCfg()
-    with open(path, 'w') as file:
-        json.dump(cfg, file)
-
-def init():
-    import simulation.grid
-    import simulation.material
-    global info, cfg, grid, material, solver_list, solver
-    assert cfg != None
-
-    try:
-        import info
-    except:
-        logger.warning("Error loading info file.")
-
-    solver_list = findSolvers()
-    logger.info("Found solvers: {}".format([s.name for s in solver_list]))
-    solver = solver_list[0]
 
     # Setup grid from configuration file
     grid = simulation.grid.Grid()
@@ -149,17 +119,69 @@ def init():
     for t in cfg["inclusions"]:
         grid.addInclusion(x=t['x'], y=t['y'], z=t['z'], r=t['r'])
 
+    grid.buildMesh()
+    grid.update()
+
     # Setup material
     material = simulation.material.Material()
     material.init(
         grid = grid,
         properties = cfg['material']['properties']
     )
+
     material.c_max = cfg['simulation']['courant']
 
     material.setPrimary(cfg['material']['primary'])
     material.setSecondary(cfg['material']['secondary'])
     material.update()
+
+    s = cfg['simulation']['solver']
+    if s in solver_dict.keys():
+        solver = solver_dict[s]
+        sim_cfg = cfg['simulation']['cfg']
+        solver.cfg = {**solver.cfg, **sim_cfg}
+    else:
+        logger.error("Solver not found: {}".format(s))
+
+    return cfg, grid, material
+
+def saveSettings(path):
+    global cfg, grid, material, solver
+    cfg['grid'] = {
+        "slope": grid.slope,
+        "max_dx": grid.max_dx,
+        "max_dy": grid.max_dy,
+        "max_dz": grid.max_dz,
+        "min_d": grid.min_d,
+        "size_x": grid.size_x,
+        "size_y": grid.size_y,
+        "size_z": grid.size_z,
+    }
+
+    cfg['inclusions'] = [ {'x': float(row[0]), 'y':float(row[1]), 'z': float(row[2]), 'r':float(row[3])} for row in grid.targets ]
+
+    cfg['simulation']['courant'] = material.c_max
+    cfg['material']['primary'] = material.primary_key
+    cfg['material']['secondary'] = material.secondary_key
+
+    cfg['simulation']['solver'] = solver.name
+    cfg['simulation']['cfg'] = solver.cfg
+
+    with open(path, 'w') as file:
+        json.dump(cfg, file)
+
+def init():
+    global info, solver_dict, solver
+
+    try:
+        import info
+    except:
+        logger.warning("Error loading info file.")
+
+    solver_dict = findSolvers()
+    logger.info("Found solvers: {}".format(list(solver_dict.keys())))
+    #solver = list(solver_dict.keys())[0]
+    solver = next(iter(solver_dict.values()))
 
 if __name__ == '__main__':
     importSettings()

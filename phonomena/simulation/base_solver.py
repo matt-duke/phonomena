@@ -1,8 +1,16 @@
-import tempfile, shutil, os
+import tempfile, shutil, os, sys
 from pathlib import Path
-import h5py
+import h5py as h5
 import threading, queue
 import numpy as np
+from time import time
+import math as m
+import copy
+import json
+import multiprocessing as mp
+
+import logging
+logger = logging.getLogger(__name__)
 
 if __name__ == '__main__':
     import sys
@@ -10,10 +18,22 @@ if __name__ == '__main__':
     sys.path.append(str(file.parents[1]))
 
 from simulation import material, grid
+from gui.worker import WorkerSignals
+
+#https://support.hdfgroup.org/HDF5/doc/RM/H5P/H5Pset_cache.htm
+#RDCC_NSLOTS = np.array((521, 1009, 2003, 3001, 4001, 5003, 6007, 7001)) # Should be prime number for best performance
+
+DTYPE = np.float64
 
 class TestDefaults:
+    '''
+    Contains minimal test setup for running tests of BaseSolver objects
+    Also includes material proprties for gallium arsenside.
+    Other materials can be added to and improted using data.json
+    '''
     properties = { "GaAs":
         {
+            "name": "Gallium Arsenide",
             "p": 5307,
             "c": np.array([
                 [11.88, 5.87, 5.38, 0, 0, 0],
@@ -49,124 +69,219 @@ class TestDefaults:
     m.setPrimary("GaAs")
     m.setSecondary("GaAs")
 
-class Writer(threading.Thread):
-    def __init__(self):
+class Writer:
+    '''
+    Writes standardized HDF files for simulation results
+    After being started using start(), grid and timestep data can be added using
+    Writer.put((grid, tt)) where grid and tt are inside a tuple.
+    Once the simulation is finished the thread can be killed using Writer.kill.set()
+    The HDF file will be flushed to disk on thread exit
+    '''
+    def __init__(self, mode='thread'):
         super().__init__()
-        self.queue = queue.Queue()
-        self.kill = threading.Event()
+        assert mode in ['thread', 'process']
+        self.queue = {'process':mp.JoinableQueue, 'thread':queue.Queue}[mode]()
         self.daemon = True
+        self.mode = {'process':mp.Process, 'thread':threading.Thread}[mode]
+        self.process = self.mode()
+        self.file = None
 
-    def put(self, obj):
-        if not self.is_alive():
-            raise Exception("Thread not started")
-        self.queue.put(obj)
+    def join(self, *args, **kwargs):
+        self.process.join(*args, **kwargs)
+        if self.process.is_alive():
+            raise mp.TimeoutError()
 
-    def init(self, steps, material, grid, file):
-        self.hdf = h5py.File(file, mode='w')
+    def is_alive(self, *args, **kwargs):
+        return self.process.is_alive(*args, **kwargs)
+
+    def put(self, *args, **kwargs):
+        if not self.process.is_alive():
+            raise Exception("Process not started")
+        self.queue.put(*args, **kwargs)
+
+    def notify_finished(self):
+        self.queue.put(None)
+
+    def init(self, steps, material, grid, cfg, file):
+        '''
+        Sets up the HDF file in a standard format.
+        The HDF file will be left open until thread exit. Do not reopen until thread has exited
+        '''
         x, y, z, t = grid.x.size, grid.y.size, grid.z.size, steps
-        self.ux = self.hdf.create_dataset("ux", (x-1,y,z,t), dtype=np.float64)
-        self.uy = self.hdf.create_dataset("uy", (x,y-1,z,t), dtype=np.float64)
-        self.uz = self.hdf.create_dataset("uz", (x,y,z-1,t), dtype=np.float64)
-        m = self.hdf.create_dataset("density", data=material.P, dtype=np.float64)
+        logger.info("Writing HDF to file {}".format(file))
+        self.file = file
+        with h5.File(file, mode='w') as hdf:
+            self.ux = hdf.create_dataset("ux", (x-1,y,z,t), chunks=(x-1,y,z,1), dtype=DTYPE)
+            self.uy = hdf.create_dataset("uy", (x,y-1,z,t), chunks=(x,y-1,z,1), dtype=DTYPE)
+            self.uz = hdf.create_dataset("uz", (x,y,z-1,t), chunks=(x,y,z-1,1), dtype=DTYPE)
+            hdf.create_dataset("density", data=material.P, chunks=material.P.shape, dtype=DTYPE)
+            hdf.create_dataset("elasticity", data=material.C, chunks=material.C.shape, dtype=DTYPE)
 
-        self.hdf.attrs["grid_x"] = grid.x
-        self.hdf.attrs["grid_y"] = grid.y
-        self.hdf.attrs["grid_z"] = grid.z
-        self.hdf.attrs["steps"] = steps
-        self.hdf.attrs["dt"] = material.dt
-        #self.hdf.flush()
-        # HDF FILE LEFT OPEN
+            hdf.attrs["x"] = grid.x
+            hdf.attrs["y"] = grid.y
+            hdf.attrs["z"] = grid.z
+            hdf.attrs["sdx"] = grid.sdx
+            hdf.attrs["sdy"] = grid.sdy
+            hdf.attrs["sdz"] = grid.sdz
+            hdf.attrs["fdx"] = grid.fdx
+            hdf.attrs["fdy"] = grid.fdy
+            hdf.attrs["fd`z"] = grid.fdz
+            hdf.attrs["steps"] = steps
+            hdf.attrs["dt"] = material.dt
+            hdf.attrs["prim_material"] = material.primary['name']
+            hdf.attrs["sec_material"] = material.secondary['name']
+            hdf.attrs["solver_cfg"] = json.dumps(cfg)
 
-    def run(self):
+    @staticmethod
+    def run(file, queue_obj):
+        '''
+        Main loop started using Writer.start()
+        '''
+
+        hdf = h5.File(file, mode='r+')
+        ux = hdf.get('ux')
+        uy = hdf.get('uy')
+        uz = hdf.get('uz')
+        print('writer process starting.')
+        sys.stdout.flush()
         while True:
-            if self.kill.is_set():
+            obj = queue_obj.get(timeout=2*60)
+            if obj == None:
                 break
-            try:
-                g, tt = self.queue.get(block=True)
-                self.ux[:,:,:,tt] = g.ux
-                self.uy[:,:,:,tt] = g.uy
-                self.uz[:,:,:,tt] = g.uz
-            except queue.Empty:
-                pass
+            else:
+                g, tt = obj
+                ux[:,:,:,tt] = g.ux
+                uy[:,:,:,tt] = g.uy
+                uz[:,:,:,tt] = g.uz
+                #hdf.flush()
 
-        self.hdf.flush()
-        self.hdf.close()
+        hdf.close()
+        print('writer process closing.')
+        sys.stdout.flush()
+
+    def start(self):
+        if self.file == None:
+            raise Exception("Must run init before start.")
+        assert Path(self.file).exists()
+        logger.info("Starting writer in {} mode.".format(self.mode))
+        self.process = self.mode(target=self.run, args=(self.file, self.queue))
+        self.process.daemon = self.daemon
+        self.process.start()
 
 
 class BaseSolver:
-
+    '''
+    Acts as a standardized class to be inherited and modified by each custom Solver.
+    Each solver run requires synchronization of simulation parameters using init()
+    followed by starting the long-running process run().
+    '''
     def __init__(self, logger):
+        '''
+        '''
         self.name = "default"
-        self.description = "<p></p>"
+        self.description = '''
+            <p>Base Solver. This string should be overwritten by the child class</p>'''
         with tempfile.NamedTemporaryFile() as f:
             self.file = os.path.realpath(f.name)
-        self.cfg = {}
+        #self.file = r'C:\Users\mattd\Desktop\test.hdf'
         self.running = threading.Event()
         self.writer = Writer()
         self.logger = logger
+        self.cfg = {'wave': 'ricker',
+                    'wave_args': {'f': 100},
+                    'write_mode': 'process'}
 
     def init(self, grid, material, steps):
-        self.g = grid
-        self.m = material
-        self.t = steps
+        '''
+        Run prior to each simulation.
+        Used to prepare the writer and update simulaton paramters
+        '''
+        self.g = copy.deepcopy(grid)
+        self.m = copy.deepcopy(material)
+        self.t = copy.deepcopy(steps)
 
-        with self.g.lock:
-            self.g.buildMesh()
-            self.g.update()
-        with self.m.lock:
-            self.m.update()
+        logger.info("Initializing {} with settings: {}".format(__name__, self.cfg))
 
-        if self.writer.is_alive():
-            self.writer.kill.set()
-            self.writer.join(timeout=1)
+        self.g.buildMesh()
+        self.g.update()
+        self.m.update()
 
-        self.writer = Writer()
-        self.writer.init(
-            steps = self.t,
-            file = self.file,
-            grid = self.g,
-            material = self.m
-        )
-        self.writer.start()
+        if self.cfg['write_mode'] != 'off':
+            if self.writer.is_alive():
+                self.writer.notify_finished()
+                self.writer.join(timeout=1)
+
+            self.writer = Writer(self.cfg['write_mode'])
+            self.writer.init(
+                steps = self.t,
+                file = self.file,
+                grid = self.g,
+                cfg = self.cfg,
+                material = self.m
+            )
+            self.writer.start()
 
     def run(self, *args, **kwargs):
-        try:
-            signals = kwargs['signals']
-        except KeyError:
-            from gui.worker import WorkerSignals
-            signals = WorkerSignals()
+        '''
+        '''
+
+        default = {'signals': WorkerSignals()}
+        kwargs = {**default, **kwargs}
+        signals = kwargs['signals']
+
+        wave_fn = {'sin': self.update_sin,
+                   'ricker': self.update_ricker}[self.cfg['wave']]
 
         signals.status.emit("Solver starting..")
         self.running.set()
 
-        self.g.lock.acquire()
-        self.m.lock.acquire()
         signals.status.emit("Running simulation.")
+        stime = time()
+        logger.debug("solver loop starting...")
+
+        progress = 0
+        signals.progress.emit(0)
+
         for tt in range(self.t):
             if not self.running.is_set():
                 self.logger.warning("Simulation cancelled.")
                 break
-            self.g.uz[0, :, 0] = self.update_ricker(tt) #applied to input face of simulation
+
+            # apply wave to input face of simulation
+            self.g.uz[0, :, 0] = wave_fn(tt = tt, **self.cfg['wave_args'])
             self.update_T()
             self.update_T_BC()
             self.update_u()
             self.update_u_BC()
             self.time_step()
 
-            self.writer.put((self.g, tt))
+            if self.cfg['write_mode'] != 'off':
+                cache = (self.g.freezeData(), tt)
+                self.writer.put(cache)
 
-            progress = ((tt+1)/self.t)*100
-            if progress % 1 == 0:
-                print(progress)
-                signals.progress.emit(progress)
+            if progress < 99:
+                progress = min(99, int(((tt+1)/self.t)*100))
+                if progress % 1 == 0:
+                    #print(progress)
+                    signals.progress.emit(progress)
 
-        self.g.lock.release()
-        self.m.lock.release()
+        # Cleanup
+        logger.debug("solver loop ended.")
         self.running.clear()
-        self.writer.kill.set()
-        self.writer.join(timeout=1)
+        if self.cfg['write_mode'] != 'off':
+            self.writer.notify_finished()
+            t1 = time()
+            self.writer.join(timeout=5*60)
+            t2 = time()-t1
+            logger.debug("Waited {:.4f}s for writer to end.".format(t2))
 
-        signals.status.emit("Simulation finished.")
+        etime = time()-stime
+        signals.status.emit("Simulation finished in {:.2f}s.".format(etime))
+        signals.progress.emit(100)
+
+    def cancel(self):
+        if self.running.is_set():
+            self.running.clear()
 
     def test(self):
         self.init(
@@ -176,14 +291,23 @@ class BaseSolver:
         )
         self.run()
 
-    def update_ricker(self, tt):
+    def update_sin(self, tt, f, **kwargs):
+        ''' f: frequency in Hz
+        **kwargs: accepts additional arguments intended for other wave functions'''
 
-        # define constants for ricker wave
-        ppw = 20 # points per wavelength
-        source_delay = 0
+        wave = np.sin(2*np.pi*f*tt*self.m.dt)
+        return wave
 
-        # create ricker wave
-        arg = (np.pi*((self.m.c_max*tt - source_delay)/ppw - 1.0)) ** 2
+    def update_ricker(self, tt, f, source_delay=0, **kwargs):
+        ''' Updates ricker wave_fn
+         ppw: points per wavelength
+         fm: peak frequency
+         source_delay: phase shift (s)
+         **kwargs: accepts additional arguments intended for other wave functions'''
+
+         # Ricker wavelet equation is here https://wiki.seg.org/wiki/Dictionary:Ricker_wavelet
+
+        arg = (np.pi*f*(self.m.dt*tt - source_delay)) ** 2
         ricker = (1 - 2 * arg) * np.exp(-arg)
         return ricker
 
@@ -196,15 +320,11 @@ class BaseSolver:
             delta = 0
         return delta
 
-    def update_sine(self, frequency, tt):
-
-        f0 = frequency
-        phi = 0
-        sine = np.sin(2*np.pi*f0*tt*self.g.dt)
-        return sine
-
-
     def update_T(self):
+        '''
+        Update each component of the stress tensor
+        Called from run(), can be overwritten by child class
+        '''
 
         self.g.T1[1:-1,1:-1,1:-1] = \
           self.m.C[1:-1,1:-1,1:-1,0,0]*(self.g.ux[1:,1:-1,1:-1] - self.g.ux[:-1,1:-1,1:-1]) \
@@ -213,7 +333,6 @@ class BaseSolver:
         / self.g.sdy \
         + self.m.C[1:-1,1:-1,1:-1,0,2]*(self.g.uz[1:-1,1:-1,1:] - self.g.uz[1:-1,1:-1,:-1]) \
         / self.g.sdz
-
 
         self.g.T2[1:-1,1:-1,1:-1] = \
           self.m.C[1:-1,1:-1,1:-1,1,0]*(self.g.ux[1:,1:-1,1:-1] - self.g.ux[:-1,1:-1,1:-1]) \
@@ -253,11 +372,18 @@ class BaseSolver:
         )
 
     def update_T_BC(self):
+        '''
+        Update stress tensor using boundary conditions
+        TODO: Add Bloch periodic boundary conditions
+        '''
 
         # self.apply_T_pbc(g)
         self.apply_T_tfbc()
 
     def apply_T_pbc(self):
+        '''
+        ARCHIVED: Not currently used. To be updated for Bloch periodic BC
+        '''
 
         self.g.T1[:,0,:] = self.g.T1[:,-2,:]
         self.g.T2[:,0,:] = self.g.T2[:,-2,:]
@@ -274,6 +400,10 @@ class BaseSolver:
         self.g.T6[:,-1,:] = self.g.T6[:,1,:]
 
     def apply_T_tfbc(self):
+        '''
+        Update stress tensor using traction free BC
+        Called from apply_T_BC(), can be overwritten by child class
+        '''
 
         self.g.T1[1:-1,1:-1,0] = \
             self.m.C[1:-1,1:-1,0,0,0]*(self.g.ux[1:,1:-1,0] - self.g.ux[:-1,1:-1,0]) / self.g.sdx[0,:,:] \
@@ -303,6 +433,10 @@ class BaseSolver:
             + (self.g.uy[1:,:,0] - self.g.uy[:-1,:,0]) / self.g.fdz[:,:,0])
 
     def update_u(self):
+        '''
+        Update displacement vectors based on stress tensor
+        Called from run(), can be overwritten by child class
+        '''
 
         self.g.ux_new[:,1:-1,1:-1] = 2*self.g.ux[:,1:-1,1:-1] \
             - self.g.ux_old[:,1:-1,1:-1] \
@@ -329,12 +463,19 @@ class BaseSolver:
             )
 
     def update_u_BC(self):
-
+        '''
+        Update displacement vectors using boundary conditions
+        Called from run()
+        TODO: Add Bloch periodic boundary conditions
+        '''
         # self.apply_u_pbc()
         self.apply_u_tfbc()
         self.apply_u_abc()
 
     def apply_u_pbc(self):
+        '''
+        ARCHIVED: Not in use. To be updated for Bloch peridoic BC
+        '''
 
         self.g.ux_new[:,0,:] = self.g.ux_new[:,-2,:]
         # self.g.uy_new[:,0,:] = self.g.uy_new[:,-2,:]
@@ -345,8 +486,12 @@ class BaseSolver:
         # self.g.uz_new[:,-1,:] = self.g.uz_new[:,1,:]
 
     def apply_u_tfbc(self):
-        # affects z = 0 index only
+        '''
+        Update displacement vectors using traction free BC
+        Called from update_u_BC, can be overwritten by child class
+        '''
 
+        # affects z = 0 index only
         self.g.ux_new[:,1:-1,0] = 2*self.g.ux[:,1:-1,0] \
             - self.g.ux_old[:,1:-1,0] \
             + (self.m.dt**2/self.m.P[1:,1:-1,0]) \
@@ -372,6 +517,10 @@ class BaseSolver:
             )
 
     def apply_u_abc(self):
+        '''
+        Update displacement vectors using absorbing BC
+        Called from update_u_BC, can be overwritten by child class
+        '''
 
         c11 = self.m.C[0,0,0,0,0]
         c44 = self.m.C[0,0,0,3,3]
@@ -405,6 +554,9 @@ class BaseSolver:
         self.g.uz_new[:,:,-1] = self.g.uz[:,:,-2] + clz[-1]*(self.g.uz_new[:,:,-2]-self.g.uz[:,:,-1])
 
     def time_step(self):
+        '''
+        Update the time step, shift displacement matrices
+        '''
 
         self.g.ux_temp[:,:,:] = self.g.ux
         self.g.uy_temp[:,:,:] = self.g.uy

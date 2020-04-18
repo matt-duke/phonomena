@@ -21,6 +21,11 @@ class InclusionTable(QtWidgets.QTableWidget):
         self.addAction(addAction)
         self.addAction(removeAction)
 
+    def removeAll(self):
+        for i in range(self.rowCount()):
+            self.removeRow(i)
+        self.cellChanged.emit(0,0)
+
     def removeCurrentRow(self):
         i = self.currentRow()
         self.removeRow(i)
@@ -68,14 +73,14 @@ class Settings(QGroupBox):
         self.slope = QtWidgets.QDoubleSpinBox()
         self.inclusions = InclusionTable()
 
-        self.x_width.valueChanged.connect(self.meshButtonClick)
-        self.y_width.valueChanged.connect(self.meshButtonClick)
-        self.z_width.valueChanged.connect(self.meshButtonClick)
-        self.max_dx.valueChanged.connect(self.meshButtonClick)
-        self.max_dy.valueChanged.connect(self.meshButtonClick)
-        self.max_dz.valueChanged.connect(self.meshButtonClick)
-        self.min_d.valueChanged.connect(self.meshButtonClick)
-        self.slope.valueChanged.connect(self.meshButtonClick)
+        self.x_width.editingFinished.connect(self.meshButtonClick)
+        self.y_width.editingFinished.connect(self.meshButtonClick)
+        self.z_width.editingFinished.connect(self.meshButtonClick)
+        self.max_dx.editingFinished.connect(self.meshButtonClick)
+        self.max_dy.editingFinished.connect(self.meshButtonClick)
+        self.max_dz.editingFinished.connect(self.meshButtonClick)
+        self.min_d.editingFinished.connect(self.meshButtonClick)
+        self.slope.editingFinished.connect(self.meshButtonClick)
         self.inclusions.cellChanged.connect(self.meshButtonClick)
 
         self.layout.addWidget(QLabel("X width:"),0,0)
@@ -114,30 +119,18 @@ class Settings(QGroupBox):
     def refresh(self):
         self.blockSignals(True)
         self.x_width.setValue(common.grid.size_x)
-        self.x_width.setMinimum(1)
-        self.x_width.setMaximum(10000)
         self.y_width.setValue(common.grid.size_y)
-        self.y_width.setMinimum(1)
-        self.y_width.setMaximum(10000)
         self.z_width.setValue(common.grid.size_z)
-        self.z_width.setMinimum(1)
-        self.z_width.setMaximum(10000)
         self.max_dx.setValue(common.grid.max_dx)
-        self.max_dx.setMinimum(common.grid.min_d)
         self.max_dy.setValue(common.grid.max_dy)
-        self.max_dy.setMinimum(common.grid.min_d)
         self.max_dz.setValue(common.grid.max_dz)
-        self.max_dz.setMinimum(common.grid.min_d)
-        self.min_d.setValue(common.grid.min_d)
-        self.min_d.setMinimum(0.1)
-        self.min_d.setMaximum(min((self.max_dx.value(),self.max_dy.value())))
-        self.slope.setSingleStep(0.1)
-        self.slope.setValue(common.grid.slope)
-        self.slope.setMinimum(0.1)
-        self.slope.setMaximum(1)
-        self.slope.setSingleStep(0.1)
 
-        self.inclusions.clearSpans()
+        self.min_d.setValue(common.grid.min_d)
+        self.min_d.setMaximum(min((self.max_dx.value(),self.max_dy.value())))
+        self.slope.setValue(common.grid.slope)
+
+
+        self.inclusions.removeAll()
         num_rows = len(common.grid.targets)
         for i in range(num_rows):
             t = common.grid.targets[i]
@@ -154,6 +147,13 @@ class Settings(QGroupBox):
         common.grid.max_dz = self.max_dz.value()
         common.grid.min_d = self.min_d.value()
         common.grid.slope = self.slope.value()
+        self.max_dx.setMinimum(common.grid.min_d)
+        self.max_dy.setMinimum(common.grid.min_d)
+        self.max_dz.setMinimum(common.grid.min_d)
+        self.slope.setSingleStep(0.1)
+        self.min_d.setMinimum(0.1)
+        self.slope.setMinimum(0.001)
+        self.slope.setSingleStep(0.1)
 
         common.grid.clearInclusions()
         num_rows = self.inclusions.rowCount()
@@ -212,6 +212,7 @@ class XYGridView(QtWidgets.QGraphicsView):
         self.grid = self.Grid(self.main_widget)
         self.setRenderHints(QtGui.QPainter.Antialiasing)
         self.setScene(self.grid)
+        self.scale(1, -1);
 
     def drawGrid(self):
         self.grid.drawGrid()
@@ -282,7 +283,7 @@ class YZGridView(QtWidgets.QGraphicsView):
 
             pen = QtGui.QPen(QtGui.QColor(255,0,0), 2, QtCore.Qt.SolidLine)
             for t in common.grid.targets:
-                z = (t['z']-t['r'])*self.scale
+                z = (t['z'])*self.scale
                 y = (t['y']-t['r'])*self.scale
                 d = 2*t['r']*self.scale
                 self.obj.append(self.addLine(y, 0, y, z, pen))

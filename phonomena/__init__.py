@@ -1,7 +1,3 @@
-from . import common
-common.set_tmpdir()
-del common
-
 # Add package to path to allow for imports inside modules
 from pathlib import Path
 import sys

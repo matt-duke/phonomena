@@ -4,6 +4,7 @@ import h5py
 from time import sleep
 from pathlib import Path
 import shutil
+import math as m
 
 from PyQt5 import QtWidgets, QtGui, QtCore
 from PyQt5.QtWidgets import *
@@ -55,22 +56,27 @@ class Viewer(QWidget):
 
         self.plot_tab_widget = QTabWidget()
         canv_1 = FigureCanvas(Figure())
-        self.disp_ax = canv_1.figure.subplots()
-        self.disp_ax.axis('equal')
+        self.density_ax = canv_1.figure.subplots()
+
         canv_2 = FigureCanvas(Figure())
-        self.density_ax = canv_2.figure.subplots()
-        self.density_ax.axis('equal')
+        self.disp_ax = canv_2.figure.subplots()
+
         canv_3 = FigureCanvas(Figure())
-        self.spectrum_ax = canv_3.figure.subplots()
-        self.plot_tab_widget.addTab(canv_1, "Displacement")
-        self.plot_tab_widget.addTab(canv_2, "Density")
-        self.plot_tab_widget.addTab(canv_3, "Spectrum")
+        self.spectrum1D_ax = canv_3.figure.subplots()
+
+        canv_4 = FigureCanvas(Figure())
+        self.spectrum2D_ax = canv_4.figure.subplots()
+
+        self.plot_tab_widget.addTab(canv_1, "Density")
+        self.plot_tab_widget.addTab(canv_2, "Displacement")
+        self.plot_tab_widget.addTab(canv_3, "Spectrum 1D")
+        self.plot_tab_widget.addTab(canv_4, "Spectrum 2D")
 
         gb_fft = QGroupBox("Spectrum Gate")
         l_fft = QGridLayout()
         self.fft_slider = QSlider(QtCore.Qt.Orientation.Vertical)
         self.fft_slider.setTracking(False)
-        self.fft_slider.setInvertedAppearance(True)
+        self.fft_slider.setInvertedAppearance(False)
         self.fft_slider.valueChanged.connect(self.refresh)
         l_fft.addWidget(self.fft_slider)
         gb_fft.setLayout(l_fft)
@@ -105,9 +111,13 @@ class Viewer(QWidget):
 
         margin = 30
         self.layout.setContentsMargins(margin,margin,margin,margin)
-        self.layer_id = 'ux'
+        self.u_id = 'ux'
 
         self.hdf_file = None
+
+        self.iz = lambda max: int(self.z_slider.value()/100*max)
+        self.it = lambda max: int(self.t_slider.value()/100*max)
+        self.ifft = lambda max: int(self.fft_slider.value()/100*max)
 
     def loadHDF(self, file):
         file = Path(file)
@@ -142,62 +152,131 @@ class Viewer(QWidget):
             if filename:
                 shutil.copyfile(self.hdf_file, filename)
 
+    def clear(self):
+        self.hdf = None
+
+    def showError(self, e):
+        self.main_widget.window.showError(e)
+
+    def plotDft1D(self, hdf, x, y, z, shape):
+        try:
+            ix, iy, iz = self.ifft(shape[0]), int(shape[1]/2), self.iz(shape[2])
+            x, f, dft = analysis.spectrum(
+                hdf,
+                u_id = self.u_id,
+                x_index=ix,
+                y_index=iy,
+                z_index=iz
+            )
+            dft, I = analysis.trim_trailing_zeros(dft, threshold=1)
+            self.spectrum1D_ax.figure.clear()
+            self.spectrum1D_ax = self.spectrum1D_ax.figure.subplots()
+            cf = self.spectrum1D_ax.plot(f[I], dft)
+            self.spectrum1D_ax.set_xlabel('Frequency [Hz]')
+            self.spectrum1D_ax.set_ylabel('DFT')
+            self.spectrum1D_ax.set_title('1D FFT (t) of {} at x={:.2f}, y={:.2f}, z={:.2f}'.format(self.u_id, x[ix], y[iy], z[iz]))
+            self.spectrum1D_ax.figure.canvas.draw()
+        except Exception as e:
+            self.showError(e)
+
+    def plotDft2D(self, hdf, x, y, z, shape):
+        try:
+            iy, iz = self.ifft(shape[1]), self.iz(shape[2])
+            x, f, dft = analysis.spectrum(
+                hdf,
+                u_id = self.u_id,
+                y_index=iy,
+                z_index=iz
+            )
+            dft, I = analysis.trim_trailing_zeros(dft, threshold=1)
+            self.spectrum2D_ax.figure.clear()
+            self.spectrum2D_ax = self.spectrum2D_ax.figure.subplots()
+            X, F = np.meshgrid(x, f[I])
+            cf = self.spectrum2D_ax.contourf(X, F, dft.transpose(), 100)
+            self.spectrum2D_ax.figure.colorbar(cf)
+            self.spectrum2D_ax.set_xlabel('X')
+            self.spectrum2D_ax.set_ylabel('Frequency [Hz]')
+            self.spectrum2D_ax.set_title('2D FFT (x, t) of {} at y={:.2f}, z={:.2f}'.format(self.u_id, y[iy], z[iz]))
+            self.spectrum2D_ax.figure.canvas.draw()
+        except Exception as e:
+            self.showError(e)
+
+    def plotDensity(self, x, y, z, P):
+        try:
+            iz = self.iz(P.shape[2])
+            x = np.mean([x[:-1], x[1:]], axis=0)
+            y = np.mean([y[:-1], y[1:]], axis=0)
+            X, Y = np.meshgrid(x,y)
+            Z = P[1:-1,1:-1,iz].transpose()
+            self.density_ax.figure.clear()
+            self.density_ax = self.density_ax.figure.subplots()
+            cf = self.density_ax.pcolormesh(X, Y, Z)
+            self.density_ax.set_xticks(x)
+            self.density_ax.set_xticklabels([])
+            self.density_ax.set_yticklabels([])
+            self.density_ax.set_yticks(y)
+            self.density_ax.grid()
+            self.density_ax.axis('equal')
+            self.density_ax.set_xlabel('X')
+            self.density_ax.set_ylabel('Y')
+            self.density_ax.set_title('density at z={:.2f}'.format(iz))
+            self.density_ax.figure.colorbar(cf)
+            self.density_ax.figure.canvas.draw()
+        except Exception as e:
+            self.showError(e)
+
+    def plotDisplacement(self, x, y, z, u, dt):
+        try:
+            iz, it = self.iz(u.shape[2]), self.it(u.shape[3])
+            size_x, size_y = (u.shape[0], u.shape[1])
+            X, Y = np.meshgrid(x[:size_x], y[:size_y])
+            self.disp_ax.figure.clear()
+            self.disp_ax = self.disp_ax.figure.subplots()
+            Z = u[:,:,iz,it].transpose()
+            cf = self.disp_ax.contourf(X, Y, Z, 100)
+            self.disp_ax.figure.colorbar(cf)
+            self.disp_ax.set_xlabel('X')
+            self.disp_ax.set_ylabel('Y')
+            self.disp_ax.set_title('{} at z={:.2f}, t={:.2f}ms'.format(self.u_id, z[iz], it*dt*1e-3))
+            self.disp_ax.figure.canvas.draw()
+        except Exception as e:
+            self.showError(e)
+
     def refresh(self):
-        iz = lambda max: int(self.z_slider.value()/100*max)
-        it = lambda max: int(self.t_slider.value()/100*max)
-        ifft = lambda max: int(self.fft_slider.value()/100*max)
         if self.hdf_file != None:
             with h5py.File(self.hdf_file, mode='r') as hdf:
-                u = hdf.get(self.layer_id)
+                u = hdf.get(self.u_id)
                 P = hdf.get('density')
-                x = hdf.attrs['grid_x']
-                y = hdf.attrs['grid_y']
-                z = hdf.attrs['grid_z']
+                x = hdf.attrs['x']
+                y = hdf.attrs['y']
+                z = hdf.attrs['z']
+                dt = hdf.attrs['dt']
 
-                x, f, fft = analysis.spectrum(
-                    self.hdf_file,
-                    y_index=ifft(y.size),
-                    z_index=iz(z.size)
-                )
-                FFT = np.real(fft)
-                F, X = np.meshgrid(f, x)
-                fig = self.spectrum_ax.figure
-                fig.clear()
-                self.spectrum_ax = fig.subplots()
-                cf = self.spectrum_ax.contourf(X, F, FFT, 100)
-                self.spectrum_ax.figure.colorbar(cf)
-                self.spectrum_ax.figure.canvas.draw()
-
-                X, Y = np.meshgrid(y, x)
-                fig = self.density_ax.figure
-                fig.clear()
-                self.density_ax = fig.subplots()
-                self.density_ax.axis('equal')
-                Z = P[:,:,iz(P.shape[2])]
-                cf = self.density_ax.contourf(X, Y, Z, 100)
-                self.density_ax.figure.colorbar(cf)
-                self.density_ax.figure.canvas.draw()
-
-                size_x, size_y = (u.shape[0], u.shape[1])
-                X, Y = np.meshgrid(y[:size_y], x[:size_x])
-                self.disp_ax.clear()
-                Z = u[:,:,iz(u.shape[2]),it(u.shape[3])]
-                self.disp_ax.contourf(X, Y, Z, 100)
-                self.disp_ax.figure.canvas.draw()
+                # Seperate update functions for speed. No need to run all calculations for every change
+                sender = self.sender()
+                if sender == self.t_slider:
+                    self.plotDisplacement(x,y,z,u,dt)
+                elif sender == self.fft_slider:
+                    self.plotDft1D(hdf, x, y, z, u.shape)
+                    self.plotDft2D(hdf, x, y, z, u.shape)
+                #elif sender == self.z_slider:
+                else:
+                    self.plotDensity(x,y,z,P)
+                    self.plotDft1D(hdf, x, y, z, u.shape)
+                    self.plotDft2D(hdf, x, y, z, u.shape)
+                    self.plotDisplacement(x,y,z,u,dt)
         else:
-            x, y = common.grid.x, common.grid.y
-            X, Y = np.meshgrid(y, x)
-            P = common.material.P
-
-            X, Y = np.meshgrid(y, x)
-            self.density_ax.clear()
-            self.density_ax.contourf(X, Y, P[:,:,iz(P.shape[2])])
-            self.density_ax.figure.canvas.draw()
+            self.plotDensity(
+                common.grid.x,
+                common.grid.y,
+                common.grid.z,
+                common.material.P
+            )
 
     def layerChange(self):
         btn = [self.ux_btn,self.uy_btn,self.uz_btn]
         for b in btn:
             if b.isChecked():
-                self.layer_id = b.text()
+                self.u_id = b.text()
                 break
         self.refresh()

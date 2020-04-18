@@ -57,6 +57,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         self.main.cancelSimulation()
         if True:
+            common.setTempdir() # clear HDF files on exit
             event.accept()
         else:
             event.ignore()
@@ -65,8 +66,8 @@ class MainWindow(QMainWindow):
         logger.error(err)
         msg = QMessageBox()
         msg.setIcon(QMessageBox.Critical)
-        msg.setText(str(type(err)))
-        msg.setInformativeText(str(err))
+        msg.setText(str(err[0]))
+        msg.setInformativeText(str(err[1]))
         msg.setWindowTitle("Error")
         msg.exec_()
 
@@ -74,22 +75,24 @@ class MainWindow(QMainWindow):
         assert type(msg) == str
         #print(msg)
         self.status_bar.showMessage(msg)
-        logger.info(msg)
+        logger.debug("received status: {}".format(msg))
 
     def updateProgress(self, n):
-        assert n >= 0 and n <= 100
+        assert n >= 0 and n <= 100 and type(n) == int
         self.progress_bar.setValue(n)
 
     def open(self):
         options = QFileDialog.Options()
-        filename, _ = QFileDialog.getOpenFileName(self, "Open File", QtCore.QDir.currentPath())
+        filename, _ = QFileDialog.getOpenFileName(self, "Open File", QtCore.QDir.currentPath(), ("JSON (*.json)"))
         if filename:
-            common.importSettings(filename)
-            common.init()
-            self.main.refresh()
+            try:
+                common.loadSettings(filename)
+                self.main.refresh()
+            except Exception as e:
+                self.showError(e)
 
     def save(self):
-        filename, _ = QFileDialog.getSaveFileName(self, "Save File", QtCore.QDir.currentPath())
+        filename, _ = QFileDialog.getSaveFileName(self, "Save File", QtCore.QDir.currentPath(), ("JSON (*.json)"))
         if filename:
             common.saveSettings(filename)
 

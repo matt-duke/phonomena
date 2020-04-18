@@ -1,6 +1,7 @@
 import common
 import json
 import logging
+import time
 from PyQt5 import QtWidgets, QtGui, QtCore
 from PyQt5.QtWidgets import *
 
@@ -48,6 +49,9 @@ class Solver(QGroupBox):
 
     def testButtonClick(self):
         try:
+            self.test_result.setText("Testing...")
+            self.test_result.setStyleSheet("QLabel {background-color: white}")
+            self.main_widget.delay(1000)
             common.solver.test()
             self.test_result.setText("PASSED")
             self.test_result.setStyleSheet("QLabel {background-color: green}")
@@ -73,26 +77,23 @@ class Solver(QGroupBox):
         self.main_widget.runSimulation()
 
     def refresh(self):
-        for c in common.solver_list:
-            self.solvers.addItem(c.name)
+        self.solvers.clear()
+        for k in common.solver_dict.keys():
+            self.solvers.addItem(k)
 
     def importSolver(self):
         self.test_result.setText("NOT TESTED")
         self.test_result.setStyleSheet("QLabel {background-color: none}")
-        old_solver = common.solver
         try:
-            for s in common.solver_list:
-                if s.name == self.solvers.currentText():
-                    common.solver = s
-                    self.description.setText(s.description)
-                    self.cfg_str.setText(json.dumps(s.cfg))
-                    break
+            assert self.solvers.currentText() in common.solver_dict.keys()
+            common.solver = common.solver_dict[self.solvers.currentText()]
+            self.description.setText(common.solver.description)
+            self.cfg_str.setText(json.dumps(common.solver.cfg))
             self.lbl.setText("<p>&#10004;</p>") # check mark
 
         except Exception as e:
             self.lbl.setText("<p><b>X</b></p>") # X mark
             self.description.setText(str(e))
-            common.solver = old_solver
 
 
 class Settings(QGroupBox):
@@ -107,13 +108,13 @@ class Settings(QGroupBox):
 
         self.steps = QSpinBox()
         self.steps.setMinimum(1)
-        self.steps.setMaximum(50000)
-        self.steps.valueChanged.connect(self.update)
+        self.steps.setMaximum(100000)
+        self.steps.editingFinished.connect(self.update)
         self.courant = QDoubleSpinBox()
         self.courant.setMinimum(0.001)
         self.courant.setMaximum(2)
         self.courant.setSingleStep(0.1)
-        self.courant.valueChanged.connect(self.update)
+        self.courant.editingFinished.connect(self.update)
 
         self.layout.addWidget(QLabel("Steps:"),0,0)
         self.layout.addWidget(self.steps,0,1)
@@ -134,7 +135,7 @@ class Settings(QGroupBox):
 
     def update(self):
         common.cfg['simulation']['steps'] = self.steps.value()
-        common.material.max_c = self.courant.value()
+        common.material.c_max = self.courant.value()
 
 class Material(QGroupBox):
     def __init__(self, main_widget):
@@ -161,6 +162,7 @@ class Material(QGroupBox):
 
     def setMaterial(self):
         self.key = self.materials.currentText()
+        assert self.key in common.material.properties.keys()
         properties = common.material.properties[self.key]
         self.density.setText("{:.2f}".format(properties['p']))
         stress = properties['c']
@@ -176,31 +178,38 @@ class Material(QGroupBox):
                 self.stress.addWidget(QLabel(txt),i,j,alignment=QtCore.Qt.AlignCenter)
 
     def refresh(self):
+        self.materials.blockSignals(True)
         self.materials.clear()
         keys = common.cfg['material']['properties'].keys()
-        self.materials.blockSignals(True)
+        assert self.key in keys
         self.materials.addItems(keys)
         i = self.materials.findText(self.key)
         self.materials.setCurrentIndex(i)
-        self.setMaterial() # Run manually
+        self.setMaterial()
         self.materials.blockSignals(False)
 
 class PrimaryMaterial(Material):
     def __init__(self, main_widget):
         super().__init__(main_widget)
         self.setTitle("Primary")
-        self.key = common.cfg['material']['primary']
 
     def setMaterial(self):
         super().setMaterial()
         common.material.setPrimary(self.key)
 
+    def refresh(self):
+        self.key = common.cfg['material']['primary']
+        super().refresh()
+
 class SecondaryMaterial(Material):
     def __init__(self, main_widget):
         super().__init__(main_widget)
         self.setTitle("Secondary")
-        self.key = common.cfg['material']['secondary']
 
     def setMaterial(self):
         super().setMaterial()
         common.material.setSecondary(self.key)
+
+    def refresh(self):
+        self.key = common.cfg['material']['secondary']
+        super().refresh()

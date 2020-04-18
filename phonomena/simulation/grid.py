@@ -18,64 +18,94 @@ from threading import Lock
 
 from gui.worker import WorkerSignals
 
+DTYPE = np.float64
+
+class FrozenGrid:
+    ux = None
+    uy = None
+    uz = None
+
+
 class Grid:
 
-    def __init__(self):
-        self.lock = Lock()
-        self.x = np.array((), dtype=np.float)
-        self.y = np.array((), dtype=np.float)
-        self.z = np.array((), dtype=np.float)
+    '''
+    Grid class stores mesh information and includes function for building a non-uniform mesh.
+    '''
 
+    def __init__(self):
+        '''
+        Basic object creation. init() method should also be called to setup the grid object
+        '''
+        self.trgt_dtype=np.dtype([('x','f'), ('y','f'), ('z','f'), ('r','f')])
         self.max_dx = 1
         self.max_dy = 1
         self.max_dz = 1
+        self.min_d = 1 # Defualts to uniform array
+        self.slope = 1
 
-        self.trgt_dtype=np.dtype([('x','f'), ('y','f'), ('z','f'), ('r','f')])
-        self.targets = np.empty((0,0), self.trgt_dtype)
-        self.min_d = 0.1
-        self.slope = 0.5
+        self.clearMesh() # Initialize mesh arrays
+        self.clearInclusions() # Initialize targets array
 
-    def init(self, size_x, size_y, size_z, spacing_fn=None):
+    def init(self, size_x, size_y, size_z, fn='linear'):
+        '''
+        Pass grid specifics and initialize object variables.
+        Future versions can add additional spacing functions (x**2, exp, 1/x, etc.)
+        '''
+
+        spacing_fns = {'linear': lambda x: abs(x * self.slope)}
 
         self.size_x = int(size_x)
         self.size_y = int(size_y)
         self.size_z = int(size_z)
 
-        if spacing_fn == None:
-            self.spacing_fn = lambda x: abs(x * self.slope)
-        else:
-            self.spacing_fn = spacing_fn
+        self.spacing_fn = spacing_fns[fn]
 
         self.buildMesh()
         self.update()
 
+    def freezeData(self):
+        '''
+        Used to freeze grid data and return object emulating minimal Grid class
+        For transferring data to other threads
+        '''
+        fg = FrozenGrid()
+        fg.ux = np.copy(self.ux)
+        fg.uy = np.copy(self.uy)
+        fg.uz = np.copy(self.uz)
+        return fg
+
     def update(self):
+        '''
+        Create mesh data used in simualtion once all variables are set (manually and using buildMesh())
+        '''
         x = self.x.size
         y = self.y.size
         z = self.z.size
 
-        self.ux = np.zeros((x-1, y, z), dtype=np.float64)
-        self.uy = np.zeros((x, y-1, z), dtype=np.float64)
-        self.uz = np.zeros((x, y, z-1), dtype=np.float64)
+        # Displacement matrices (Highest precision)
+        self.ux = np.zeros((x-1, y, z), dtype=DTYPE)
+        self.uy = np.zeros((x, y-1, z), dtype=DTYPE)
+        self.uz = np.zeros((x, y, z-1), dtype=DTYPE)
 
-        self.ux_new = np.zeros((x-1, y, z), dtype=np.float64)
-        self.uy_new = np.zeros((x, y-1, z), dtype=np.float64)
-        self.uz_new = np.zeros((x, y, z-1), dtype=np.float64)
+        self.ux_new = np.zeros((x-1, y, z), dtype=DTYPE)
+        self.uy_new = np.zeros((x, y-1, z), dtype=DTYPE)
+        self.uz_new = np.zeros((x, y, z-1), dtype=DTYPE)
 
-        self.ux_old = np.zeros((x-1, y, z), dtype=np.float64)
-        self.uy_old = np.zeros((x, y-1, z), dtype=np.float64)
-        self.uz_old = np.zeros((x, y, z-1), dtype=np.float64)
+        self.ux_old = np.zeros((x-1, y, z), dtype=DTYPE)
+        self.uy_old = np.zeros((x, y-1, z), dtype=DTYPE)
+        self.uz_old = np.zeros((x, y, z-1), dtype=DTYPE)
 
-        self.ux_temp = np.zeros((x-1, y, z), dtype=np.float64)
-        self.uy_temp = np.zeros((x, y-1, z), dtype=np.float64)
-        self.uz_temp = np.zeros((x, y, z-1), dtype=np.float64)
+        self.ux_temp = np.zeros((x-1, y, z), dtype=DTYPE)
+        self.uy_temp = np.zeros((x, y-1, z), dtype=DTYPE)
+        self.uz_temp = np.zeros((x, y, z-1), dtype=DTYPE)
 
-        self.T1 = np.zeros((x, y, z), dtype=np.float64)
-        self.T2 = np.zeros((x, y, z), dtype=np.float64)
-        self.T3 = np.zeros((x, y, z), dtype=np.float64)
-        self.T4 = np.zeros((x, y-1, z-1), dtype=np.float64)
-        self.T5 = np.zeros((x-1, y, z-1), dtype=np.float64)
-        self.T6 = np.zeros((x-1, y-1, z), dtype=np.float64)
+        # Stress tensor
+        self.T1 = np.zeros((x, y, z), dtype=DTYPE)
+        self.T2 = np.zeros((x, y, z), dtype=DTYPE)
+        self.T3 = np.zeros((x, y, z), dtype=DTYPE)
+        self.T4 = np.zeros((x, y-1, z-1), dtype=DTYPE)
+        self.T5 = np.zeros((x-1, y, z-1), dtype=DTYPE)
+        self.T6 = np.zeros((x-1, y-1, z), dtype=DTYPE)
 
         # full dx (n-1)
         self.fdx = (self.x[1:] - self.x[:-1]).reshape((x-1,1,1))
@@ -91,14 +121,25 @@ class Grid:
         #print(self.sdz.shape)
 
     def clearMesh(self):
+        '''
+        Clear mesh data. Resets dimesnion arrays
+        '''
         self.x = np.array((), dtype=np.float)
         self.y = np.array((), dtype=np.float)
-        built = False
+        self.z = np.array((), dtype=np.float)
 
     def clearInclusions(self):
+        '''
+        Remove all inclusion regions
+        '''
         self.targets = np.empty((0,0), self.trgt_dtype)
 
     def addInclusion(self, x, y, r, z=None):
+        x = float(x)
+        y = float(y)
+        r = float(r)
+        assert x+r < self.size_x and x-r > 0
+        assert y+r < self.size_y and y-r > 0
         if z == None:
             z = self.size_z
         target = np.array([(x,y,z,r)], dtype=self.trgt_dtype)
@@ -108,18 +149,19 @@ class Grid:
         #import sys
         #np.set_printoptions(threshold=sys.maxsize)
         I = list()
-        Y, X = np.meshgrid(self.y, self.x)
+
+        x, y, z = self.x, self.y, self.z
         for t in self.targets:
-            #Ixy = np.empty((0,2), dtype=np.int)
-            #Iz = np.empty((1,0), dtype=np.int)
-            Xsq = np.square(np.subtract(X, t['x']))
-            Ysq = np.square(np.subtract(Y, t['y']))
+            X, Y = np.meshgrid(x, y)
+            X = X - t['x']
+            Y = Y - t['y']
+            Xsq = np.square(X)
+            Ysq = np.square(Y)
             R = np.sqrt(np.add(Xsq, Ysq))
-            xy = np.array(np.where(R<=t['r'])).transpose()
-            assert np.all(xy < R.shape)
-            z = np.array(np.where(self.z<=t['z'])).flatten()
-            I.append((xy, z))
-            #Iz = np.append(Iz, z, axis=1)
+            yx = np.array(np.where(R<t['r'])).transpose()
+            assert np.all(yx < R.shape)
+            z = np.array(np.where(z<=t['z'])).flatten()
+            I.append((yx, z))
         return I
 
     def buildMesh(self, *args, **kwargs):
@@ -143,8 +185,9 @@ class Grid:
 
         def removeClose(arr):
             # Remove mesh points that are too close together
+            allowance = 0.9
             overlap = np.absolute(np.subtract(arr[0:-1], arr[1:]))
-            indices = np.add(np.where(overlap < self.min_d), 1)
+            indices = np.add(np.where(overlap < allowance*self.min_d), 1)
             arr = np.delete(arr, indices)
             return arr
 
@@ -186,6 +229,7 @@ class Grid:
                 mesh = mesh[np.greater_equal(mesh, x1)]
                 mesh = mesh[np.less_equal(mesh, x2)]
                 mesh = mesh[np.less_equal(mesh, size)]
+
             return mesh
 
         def closestFit(axis):
@@ -212,16 +256,15 @@ class Grid:
             assert axis == 'x' or axis == 'y'
             mesh = np.array(())
             for t in self.targets:
-                n = int(round(t['r']*2 / self.min_d)) - 1
-                fn = lambda var: (t['r']*2 / n) * (var+1) + t[axis] - t['r']
-                mesh = appendSorted(mesh, np.fromfunction(fn, (n,)))
+                n = int(m.floor(t['r']*2 / self.min_d))
+                fn = lambda var: (t['r']*2 / n) * var + t[axis] - t['r']
+                mesh = appendSorted(mesh, np.fromfunction(fn, (n+1,)))
 
             return mesh
 
         # return dummy signals if not passed to function
         signals = WorkerSignals() if 'signals' not in kwargs.keys() else kwargs['signals']
         signals.status.emit("Rebuilding mesh...")
-        signals.progress.emit(0)
         # Add first and last mesh points
         self.clearMesh()
 
@@ -229,22 +272,17 @@ class Grid:
         self.x = appendSorted(self.x, 0)
         self.x = appendSorted(self.x, self.size_x)
         if len(self.targets) > 0:
-            signals.status.emit("Area around inclusion regions...")
-            self.x = appendSorted(self.x, functionMesh('x'))
-            signals.status.emit("Filling inclusion regions...")
             self.x = appendSorted(self.x, fillInclusion('x'))
+            self.x = appendSorted(self.x, functionMesh('x'))
             self.x = removeClose(self.x)
-        signals.status.emit("X mesh completed...")
         self.x = appendSorted(self.x, closestFit('x'))
 
         # Add/update Y lines
         self.y = appendSorted(self.y, 0)
         self.y = appendSorted(self.y, self.size_y)
-
         if len(self.targets) > 0:
-            self.y = appendSorted(self.y, functionMesh('y'))
-            self.y = appendSorted(self.y, closestFit('y'))
             self.y = appendSorted(self.y, fillInclusion('y'))
+            self.y = appendSorted(self.y, functionMesh('y'))
             self.y = removeClose(self.y)
         self.y = appendSorted(self.y, closestFit('y'))
 
@@ -252,9 +290,37 @@ class Grid:
         n = int(self.size_z / self.max_dz)
         self.z = np.linspace(0, self.size_z, n+1, dtype=np.float)
 
-        self.built = True
+        signals.status.emit("Completed mesh.")
 
 if __name__ == '__main__':
-    g = Grid(4, 4, 4)
+    import matplotlib
+    import matplotlib.pyplot as plt
+    g = Grid()
+    g.max_dx = 1
+    g.max_dy = 1
+    g.max_dz = 1
+    g.min_d = 0.8
+    g.slope = 1
+    g.init(20, 20, 5)
+    g.addInclusion(15, 15, 1)
+    g.addInclusion(9.5, 5, 2)
     g.buildMesh()
     g.update()
+
+    R = g.inclusionIndices()
+    fig, ax = plt.subplots()
+    cf = ax.contourf(g.x, g.y, R)
+    plt.colorbar(cf)
+    plt.axis('equal')
+    plt.show()
+
+    '''fig, ax = plt.subplots()
+    x = [t['x'] for t in g.targets]
+    y = [t['y'] for t in g.targets]
+    ax.scatter(x,y)
+    ax.set_xlim((0,g.size_x))
+    ax.set_ylim((0,g.size_y))
+    ax.set_xticks(g.x)
+    ax.set_yticks(g.y)
+    plt.grid()
+    plt.show()'''

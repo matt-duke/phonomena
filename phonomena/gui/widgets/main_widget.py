@@ -1,8 +1,10 @@
 from PyQt5 import QtWidgets, QtCore, QtGui
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtWidgets import *
-from gui.worker import Worker
+from time import sleep
+import copy
 
+from gui.worker import Worker
 from . import mesh, simulation, analysis, log
 import common
 
@@ -87,19 +89,24 @@ class Main(QWidget):
 
     def buildMesh(self):
         def drawGrids():
-            self.xy_mesh_view.drawGrid()
-            self.yz_mesh_view.drawGrid()
-            self.analysis.refresh()
+            try:
+                self.xy_mesh_view.drawGrid()
+                self.yz_mesh_view.drawGrid()
+                self.analysis.clear()
+                self.analysis.refresh()
+            except Exception as e:
+                self.window.showError(e)
 
         def build(*args, **kwargs):
             signals = kwargs['signals']
-            common.grid.buildMesh(args, kwargs)
+            common.grid.buildMesh(*args, **kwargs)
             common.grid.update()
             common.material.update()
 
         self.gui_update_pool.clear()
+        self.gui_update_pool.waitForDone(msecs=1000)
         worker = Worker(build, callback_fns=self.window.callback_fns)
-        worker.signals.finished.connect(drawGrids)
+        worker.signals.success.connect(drawGrids)
         self.gui_update_pool.start(worker)
 
     def runSimulation(self):
@@ -119,21 +126,27 @@ class Main(QWidget):
             callback_fns=self.window.callback_fns
         )
 
-        worker.signals.finished.connect(self.drawResults)
-        logger.info("Starting simulation...")
+        worker.signals.success.connect(self.drawResults)
+        logger.info("Adding simulation to thread pool")
         self.simpool.start(worker)
 
     def cancelSimulation(self):
         if self.simpool.activeThreadCount() > 0:
             logger.warning("Cancelling simulation...")
-            common.solver.running.clear()
+            common.solver.cancel()
             self.simpool.waitForDone(msecs=1000)
         self.window.updateProgress(0)
 
+    def delay(self, delay):
+        loop = QtCore.QEventLoop()
+        QtCore.QTimer.singleShot(delay, loop.quit)
+        loop.exec_()
+
     def refresh(self):
         self.mesh_settings.refresh()
-        self.buildMesh()
         self.sim_settings.refresh()
         self.prim_material.refresh()
         self.sec_material.refresh()
         self.sim_solver.refresh()
+        self.analysis.refresh()
+        self.buildMesh()

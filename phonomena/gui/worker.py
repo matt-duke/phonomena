@@ -26,6 +26,7 @@ class WorkerSignals(QtCore.QObject):
 
     '''
     finished = pyqtSignal()
+    success = pyqtSignal()
     error = pyqtSignal(tuple)
     warning = pyqtSignal(tuple)
     result = pyqtSignal(object)
@@ -75,8 +76,6 @@ class Worker(QtCore.QRunnable):
         '''
         Initialise the runner function with passed args, kwargs.
         '''
-
-        # Retrieve args/kwargs here; and fire processing using them
         try:
             result = self.fn(*self.args, **self.kwargs)
         except:
@@ -85,5 +84,6 @@ class Worker(QtCore.QRunnable):
             self.signals.error.emit((exctype, value, traceback.format_exc()))
         else:
             self.signals.result.emit(result)  # Return the result of the processing
+            self.signals.success.emit()  # No errors
         finally:
             self.signals.finished.emit()  # Done

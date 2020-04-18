@@ -13,14 +13,19 @@ if __name__ == '__main__':
 
 import numpy as np
 import logging
+import copy
 from threading import Lock
 logger = logging.getLogger(__name__)
+
+DYTPE = np.float64
 
 class Material:
 
     def __init__(self):
         self.primary = None
+        self.primary_key = None
         self.secondary = None
+        self.secondary_key = None
 
         self.c_max = 0.5 #courant number
         self.dt = 0
@@ -28,13 +33,17 @@ class Material:
         self.C = np.zeros((0,0,0,6,6))
         self.P = np.zeros((0,0,0))
 
-        self.lock = Lock()
-
     def init(self, grid, properties):
         self.grid = grid
-        self.properties = properties
+        # pass by reference using deepcopy to avoid converting cfg data to numpy array
+        # Otherwise saving cfg to JSON would fail due to unrecognized type (np array)
+        self.properties = dict(copy.deepcopy(properties))
         for key, val in self.properties.items():
             val['c'] = np.array(val['c'])*1e10
+        # Assign default materials
+        keys = list(self.properties.keys())
+        self.setPrimary(keys[0])
+        self.setSecondary(keys[0])
 
     def update(self):
         self.C = np.zeros((self.grid.x.size, self.grid.y.size, self.grid.z.size, 6, 6))
@@ -48,20 +57,22 @@ class Material:
         self.P[:,:,:] = float(self.primary['p'])
 
         I = self.grid.inclusionIndices()
-        for xy, z in I:
-            for x, y in xy:
+        for yx, z in I:
+            for y, x in yx:
                 self.C[x,y,z] = np.array(self.secondary['c'])
                 self.P[x,y,z] = float(self.secondary['p'])
 
     def setPrimary(self, m):
         if m in self.properties.keys():
             self.primary = self.properties[m]
+            self.primary_key = m
         else:
             raise Exception()
 
     def setSecondary(self, m):
         if m in self.properties.keys():
             self.secondary = self.properties[m]
+            self.secondary_key = m
         else:
             raise Exception()
 

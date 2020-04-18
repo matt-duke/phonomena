@@ -33,6 +33,11 @@ cfg = {
 
 SERVER_DIR = Path.cwd().joinpath('server')
 AUTHKEY = b'phonomena'
+FORMAT_STR = '[%(msecs)04d]:%(levelname)s:[%(name)s:%(lineno)d]:%(message)s'
+LOG_LEVEL = logging.INFO
+if __debug__:
+    LOG_LEVEL = logging.DEBUG
+LOG_FILE = 'solver.log'
 
 class FileServer(ThreadingHTTPServer):
     #https://gist.github.com/bradmontgomery/2219997
@@ -46,6 +51,7 @@ class FileServer(ThreadingHTTPServer):
             super().do_GET()
 
         def do_POST(self):
+            logger.info("POST request received.")
             self._set_headers()
             file_length = int(self.headers['content-length'])
             data = self.rfile.read(file_length)
@@ -63,7 +69,12 @@ class FileServer(ThreadingHTTPServer):
 
 class Server(base_solver.BaseSolver):
     def __init__(self):
+        self.configureLogger()
         super().__init__(logger)
+        self.name = "remote"
+        self.description = "<p></p>"
+        self.cfg = {**cfg, **self.cfg}
+
         self.set_tmpdir(SERVER_DIR)
 
         self.m = None
@@ -72,7 +83,6 @@ class Server(base_solver.BaseSolver):
         self.status = mp.Queue()
         self.running = mp.Event()
         self.progress = mp.Queue()
-        self.writer = base_solver.Writer(self.running)
 
         self.rpc = SimpleXMLRPCServer((cfg['ip'], cfg['rpc_port']), allow_none=True)
         self.rpc.register_introspection_functions()
@@ -90,16 +100,42 @@ class Server(base_solver.BaseSolver):
         SyncManager.register('get_running', callable=lambda: self.running)
         self.sync = SyncManager(address=(cfg['ip'], cfg['sync_port']), authkey=AUTHKEY)
 
+    def configureLogger(self):
+        rootlogger = logging.getLogger()
+        rootlogger.setLevel(LOG_LEVEL)
+
+        logFormatter = logging.Formatter(FORMAT_STR)
+
+        fileHandler = logging.FileHandler(LOG_FILE, mode='w')
+        fileHandler.setLevel(LOG_LEVEL)
+        fileHandler.setFormatter(logFormatter)
+
+        consoleHandler = logging.StreamHandler()
+        consoleHandler.setFormatter(logFormatter)
+        consoleHandler.setLevel(LOG_LEVEL)
+
+        rootlogger.addHandler(fileHandler)
+        rootlogger.addHandler(consoleHandler)
+
+        modules = []
+        for m in modules:
+            l = logging.getLogger(m)
+            l.setLevel(logging.WARNING)
+
     def testRPC(self):
         return True
 
     def start(self):
+        logger.debug("Starting rpc server.")
         rpcd = threading.Thread(target=self.rpc.serve_forever)
         rpcd.start()
+        logger.debug("Starting http server.")
         httpd = threading.Thread(target=self.http.serve_forever)
         httpd.start()
+        logger.debug("Starting sync server.")
         sync = threading.Thread(target=self.sync.get_server().serve_forever)
         sync.start()
+        logger.info('Servers started. Remote solver ready.')
 
     @staticmethod
     def set_tmpdir(dir):
@@ -114,19 +150,19 @@ class Server(base_solver.BaseSolver):
             temp.mkdir()
         os.environ["TMPDIR"] = str(temp)
 
-    def init(self, grid, material, steps):
+    def init(self, grid, material, steps, cfg):
         grid = SERVER_DIR.joinpath(grid)
         material = SERVER_DIR.joinpath(material)
+        logger.info("Loading pickled objects.")
         g = dill.load(open(grid, mode='rb'))
         m = dill.load(open(material, mode='rb'))
-
+        self.cfg = cfg
         super().init(g, m, steps)
         return self.file
 
     def run(self):
         t = threading.Thread(target=super().run)
         t.start()
-
 
 class Client:
     def __init__(self):
@@ -149,12 +185,14 @@ class Client:
         with open(tmp_file.name, mode='wb') as f:
             dill.dump(obj, f)
         url = 'http://{}:{}/post'.format(cfg['ip'], cfg['http_port'])
+        logger.debug("Sending file: {}".format(url))
         with open(tmp_file.name, mode='rb') as f:
             requests.post(url, files={file: f})
         os.remove(tmp_file.name)
 
     def get_file(self, file):
         url = 'http://{}:{}/{}'.format(cfg['ip'],cfg['http_port'],file)
+        logger.debug("Downloading file: {}".format(url))
         r = requests.get(url, allow_redirects=True)
         f = tempfile.NamedTemporaryFile()
         f.close()
@@ -171,27 +209,20 @@ class Solver(base_solver.BaseSolver):
         super().__init__(logger)
         self.name = "remote"
         self.description = "<p></p>"
-        self.cfg = cfg
+        self.cfg = {**cfg, **self.cfg}
 
     def init(self, grid, material, steps):
         global cfg
         cfg = self.cfg
 
-        with grid.lock:
-            grid.buildMesh()
-            grid.update()
-        with material.lock:
-            material.update()
+        grid.buildMesh()
+        grid.update()
+        material.update()
 
         self.client = Client()
         self.client.send_obj(grid, 'grid.dill')
         self.client.send_obj(material, 'material.dill')
-        self.file = self.client.rpc.init('grid.dill', 'material.dill', steps)
-
-
-    def cancel(self):
-        if self.client.running.is_set():
-            self.client.running.clear()
+        self.file = self.client.rpc.init('grid.dill', 'material.dill', steps, self.cfg)
 
     def run(self, *args, **kwargs):
         try:
@@ -202,31 +233,26 @@ class Solver(base_solver.BaseSolver):
 
         self.client.rpc.run()
         self.client.running.wait()
+        self.running.set()
         while self.client.running.is_set():
+            if not self.running.is_set():
+                self.cancel()
+                self.logger.warning("Simulation cancelled.")
+                break
             try:
-                msg = str(self.client.status.get(timeout = 0.5))
+                msg = str(self.client.status.get(block=False))
                 signals.status.emit(msg)
                 logger.info("status: {}".format(msg))
-                progess = str(self.client.progress.get(timeout = 0.5))
-                signals.progress.emit(msg)
+                progess = str(self.client.progress.get(block=False))
+                signals.progress.emit(progress)
                 logger.info("progress: {}".format(msg))
+                time.sleep(0.1)
             except queue.Empty:
                 pass
+        signals.progress.emit(100)
         self.client.get_file(self.file)
-
+        self.running.clear()
 
 if __name__ == '__main__':
     s = Server()
     s.start()
-    #slvr = Solver()
-    #slvr.test()
-    #slvr.test()
-    #print("simulation finished")
-    #solver = Solver()
-    #solver.test()
-    #c = Client()
-    #print(c.testRPC())
-    #test = 1
-    #c.send_obj(test, 'one.dill')
-    #c.send_obj(test, 'two.dill')
-    #c.rpc.init('one.dill', 'two.dill', 2)
