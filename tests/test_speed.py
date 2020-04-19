@@ -38,7 +38,7 @@ if __name__ == '__main__':
     ]
 
     step_arr = list(range(1000, 5001, 1000))
-    repeat_test = 3
+    repeat_test = 2
 
     with open('tests/results/speed.csv', mode='w', newline='') as csvfile:
         csvwriter = csv.writer(csvfile, dialect='excel', delimiter=',')
