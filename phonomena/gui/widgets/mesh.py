@@ -101,8 +101,9 @@ class Settings(QGroupBox):
         self.layout.addWidget(self.slope,7,1)
         self.layout.addWidget(QLabel("Inclusion regions:"),8,0,1,2)
         self.layout.addWidget(self.inclusions,9,0,1,2)
+        self.layout.addWidget(QLabel("Note: all units in mm"),10,0,1,2)
 
-        self.layout.setVerticalSpacing(25)
+        self.layout.setVerticalSpacing(20)
         #self.addWidget(self.mesh_button,7,1)
 
     def blockSignals(self, bool):
@@ -126,7 +127,6 @@ class Settings(QGroupBox):
         self.max_dz.setValue(common.grid.max_dz)
 
         self.min_d.setValue(common.grid.min_d)
-        self.min_d.setMaximum(min((self.max_dx.value(),self.max_dy.value())))
         self.slope.setValue(common.grid.slope)
 
 
@@ -150,6 +150,7 @@ class Settings(QGroupBox):
         self.max_dx.setMinimum(common.grid.min_d)
         self.max_dy.setMinimum(common.grid.min_d)
         self.max_dz.setMinimum(common.grid.min_d)
+        self.min_d.setMaximum(min((self.max_dx.value(),self.max_dy.value())))
         self.slope.setSingleStep(0.1)
         self.min_d.setMinimum(0.1)
         self.slope.setMinimum(0.001)

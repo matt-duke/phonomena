@@ -200,7 +200,7 @@ class BaseSolver:
         self.m = copy.deepcopy(material)
         self.t = copy.deepcopy(steps)
 
-        logger.info("Initializing {} with settings: {}".format(__name__, self.cfg))
+        logger.info("Initializing {} with settings: {}".format(self.logger.name, self.cfg))
 
         self.g.buildMesh()
         self.g.update()

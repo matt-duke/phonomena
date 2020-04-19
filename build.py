@@ -24,7 +24,7 @@ if os.name == 'nt':
 elif os.name == 'posix':
     add_data = '--add-data={}:{}'
 
-version = '0.9'
+version = '2.0'
 build_num = time.strftime('%j%y.%H%M%S')
 print("Building...")
 print('v.{}, b.{}'.format(version, build_num))

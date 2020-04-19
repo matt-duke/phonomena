@@ -5,3 +5,6 @@
 debug.log
 ~$*.docx
 ~*.tmp
+activate.bat
+test.py
+tests/results/*

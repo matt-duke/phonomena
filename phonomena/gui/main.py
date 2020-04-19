@@ -1,23 +1,10 @@
-# boilerplate for package modules
-if __name__ == '__main__':
-    from pathlib import Path
-    import sys
-    file = Path(__file__).resolve()
-    parent, root = file.parent, file.parents[1]
-    sys.path.append(str(root))
-
-    # Additionally remove the current file's directory from sys.path
-    try:
-        sys.path.remove(str(parent))
-    except ValueError: # Already removed
-        pass
-
 import sys
 from PyQt5 import QtWidgets, QtCore, QtGui
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QImage, QPixmap, QPalette, QPainter
 from PyQt5.QtPrintSupport import QPrintDialog, QPrinter
 from PyQt5.QtWidgets import *
+import subprocess as sp
 
 import common
 from gui import widgets
@@ -97,10 +84,11 @@ class MainWindow(QMainWindow):
             common.saveSettings(filename)
 
     def about(self):
+        py_ver = sp.check_output([sys.executable, "--version"]).decode("utf-8")
         about = """<p>This program was developed for the ENPH 455 undergraduate thesis
-        by Marc Cameron and extended by Matt Duke. It was designed to model acoustic wave
-        transmission using the FDTD simulation.
-        <br><br>Version: {}<br>Build: {}</p>""".format(common.info.version, common.info.build)
+        by Marc Cameron and continued by Matt Duke in 2020. It was designed to model acoustic wave
+        transmission using an FDTD simulation.
+        <br><br>Python: {}<br>Version: {}<br>Build: {}</p>""".format(py_ver, common.info.version, common.info.build)
         QMessageBox.about(self, "Phonomena", about)
 
     def openRepo(self):
@@ -133,8 +121,3 @@ def start():
     form.show()
     app.exec_()
     sys.exit(0)
-
-if __name__ == '__main__':
-    common.importSettings()
-    common.init()
-    start()

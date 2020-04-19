@@ -11,6 +11,7 @@ from PyQt5.QtWidgets import *
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qt5agg import FigureCanvas
 from matplotlib.lines import Line2D
+import matplotlib.ticker as ticker
 
 from simulation import analysis
 
@@ -194,7 +195,9 @@ class Viewer(QWidget):
             X, F = np.meshgrid(x, f[I])
             cf = self.spectrum2D_ax.contourf(X, F, dft.transpose(), 100)
             self.spectrum2D_ax.figure.colorbar(cf)
-            self.spectrum2D_ax.set_xlabel('X')
+            self.spectrum2D_ax.set_xlabel('X [mm]')
+            ticks = ticker.FuncFormatter(lambda x, pos: '{0:g}'.format(x*1e3))
+            self.spectrum2D_ax.xaxis.set_major_formatter(ticks)
             self.spectrum2D_ax.set_ylabel('Frequency [Hz]')
             self.spectrum2D_ax.set_title('2D FFT (x, t) of {} at y={:.2f}, z={:.2f}'.format(self.u_id, y[iy], z[iz]))
             self.spectrum2D_ax.figure.canvas.draw()
@@ -217,8 +220,8 @@ class Viewer(QWidget):
             self.density_ax.set_yticks(y)
             self.density_ax.grid()
             self.density_ax.axis('equal')
-            self.density_ax.set_xlabel('X')
-            self.density_ax.set_ylabel('Y')
+            self.density_ax.set_xlabel('X [mm]')
+            self.density_ax.set_ylabel('Y [mm]')
             self.density_ax.set_title('density at z={:.2f}'.format(iz))
             self.density_ax.figure.colorbar(cf)
             self.density_ax.figure.canvas.draw()

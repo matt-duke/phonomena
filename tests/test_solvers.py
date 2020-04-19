@@ -1,29 +1,31 @@
-from pathlib import Path
-import sys
-from time import time
+if __name__ == "__main__":
 
-import test_setup
+    from pathlib import Path
+    import sys
+    from time import time
 
-import unittest
-import phonomena
-from phonomena import common
-common.setTempdir()
-#from phonomena.simulation import grid
-#from phonomena.simulation import material
+    import test_setup
 
-class TestSolvers(unittest.TestCase):
+    import unittest
+    import phonomena
+    from phonomena import common
+    common.setTempdir()
+    #from phonomena.simulation import grid
+    #from phonomena.simulation import material
 
-    def test_default(self):
-        t1 = time()
-        s = common.importSolver("solver_default")
-        s.test()
-        print(time()-t1)
+    class TestSolvers(unittest.TestCase):
 
-    def test_numba(self):
-        t1 = time()
-        s = common.importSolver("solver_numba")
-        s.test()
-        print(time()-t1)
+        def test_default(self):
+            t1 = time()
+            s = common.importSolver("solver_multiprocess")
+            s.test()
+            print(time()-t1)
+
+        def test_numba(self):
+            t1 = time()
+            s = common.importSolver("solver_numba")
+            s.test()
+            print(time()-t1)
 
 
 if __name__ == '__main__':

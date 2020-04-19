@@ -84,7 +84,7 @@ class Material:
             vl = np.sqrt(c11/p) # parallel
             vt = np.sqrt(c44/p) # transverse
             vmax = max((vl, vt))
-            dxmin = min((np.amin(self.grid.fdx),np.amin(self.grid.fdy), np.amin(self.grid.fdz)))
+            dxmin = min((np.amin(self.grid.fdx),np.amin(self.grid.fdy), np.amin(self.grid.fdz)))*self.grid.SI_conversion
             dt = self.c_max*dxmin/vmax
             return dt
 

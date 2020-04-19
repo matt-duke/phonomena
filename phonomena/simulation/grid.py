@@ -43,6 +43,8 @@ class Grid:
         self.min_d = 1 # Defualts to uniform array
         self.slope = 1
 
+        self.SI_conversion = 1e-3 # all variables stored in mm
+
         self.clearMesh() # Initialize mesh arrays
         self.clearInclusions() # Initialize targets array
 
@@ -107,10 +109,15 @@ class Grid:
         self.T5 = np.zeros((x-1, y, z-1), dtype=DTYPE)
         self.T6 = np.zeros((x-1, y-1, z), dtype=DTYPE)
 
+        # fd and sd must be in SI units for calculation. Converted here.
+        x_SI = self.x * self.SI_conversion
+        y_SI = self.y * self.SI_conversion
+        z_SI = self.z * self.SI_conversion
+
         # full dx (n-1)
-        self.fdx = (self.x[1:] - self.x[:-1]).reshape((x-1,1,1))
-        self.fdy = (self.y[1:] - self.y[:-1]).reshape((1,y-1,1))
-        self.fdz = (self.z[1:] - self.z[:-1]).reshape((1,1,z-1))
+        self.fdx = (x_SI[1:] - x_SI[:-1]).reshape((x-1,1,1))
+        self.fdy = (y_SI[1:] - y_SI[:-1]).reshape((1,y-1,1))
+        self.fdz = (z_SI[1:] - z_SI[:-1]).reshape((1,1,z-1))
 
         # staggered dx (n-2)
         self.sdx = np.mean([self.fdx[1:,:,:], self.fdx[:-1,:,:]], axis=0)
@@ -124,9 +131,9 @@ class Grid:
         '''
         Clear mesh data. Resets dimesnion arrays
         '''
-        self.x = np.array((), dtype=np.float)
-        self.y = np.array((), dtype=np.float)
-        self.z = np.array((), dtype=np.float)
+        self.x = np.array((), dtype=DTYPE)
+        self.y = np.array((), dtype=DTYPE)
+        self.z = np.array((), dtype=DTYPE)
 
     def clearInclusions(self):
         '''
@@ -135,6 +142,9 @@ class Grid:
         self.targets = np.empty((0,0), self.trgt_dtype)
 
     def addInclusion(self, x, y, r, z=None):
+        '''
+        Add inclusion region where units are passed in mm
+        '''
         x = float(x)
         y = float(y)
         r = float(r)

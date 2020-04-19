@@ -1,9 +1,7 @@
 if __name__ == '__main__':
     from time import time
     import cProfile
-    import unittest
-    import multiprocessing as mp
-    mp.freeze_support()
+    import csv
 
     import test_setup
 
@@ -11,14 +9,13 @@ if __name__ == '__main__':
     from phonomena.simulation import material, grid
     from phonomena.simulation import base_solver
 
-    common.configureLogger()
-    common. setTempdir()
+    common.startupTasks()
 
     g = grid.Grid()
     g.init(
-        size_x = 50,
-        size_y = 50,
-        size_z = 10
+        size_x = 60,
+        size_y = 60,
+        size_z = 20
     )
 
     m = material.Material()
@@ -35,25 +32,31 @@ if __name__ == '__main__':
 
     solvers = [
         "solver_default",
-        #"solver_numba",
-        #"solver_threading"
+        "solver_numba",
+        "solver_threading",
+        "solver_multiprocess"
     ]
 
-    steps = [1000]
+    step_arr = [500]#range(1000, 5000, 500)
 
     repeat_test = 1
 
-    for s in solvers:
-        for tt in steps:
-            t_time = 0
-            for n in range(repeat_test):
-                solver = common.importSolver(s)
-                solver.cfg['write_mode'] = 'process'
-                solver.init(g, m, tt)
-                t1 = time()
-                #cProfile.run("solver.run()")
-                solver.run()
-                t2 =  time()-t1
-                t_time += t2
-                print("run {}: {} completed {} steps in {}s".format(n, s, tt, t2))
-            print("{} runs in {}s ({}s avg)".format(repeat_test, t_time, t_time/repeat_test))
+    with open('tests/results/speed.csv', mode='w', newline='') as csvfile:
+        csvwriter = csv.writer(csvfile, dialect='excel', delimiter=',')
+        csvwriter.writerow(['solver', 'trial', 'steps', 'points', 'runtime', 'cfg'])
+        for s in solvers:
+            solver = common.importSolver(s)
+            solver.cfg['write_mode'] = 'off'
+            for steps in step_arr:
+                t_time = 0
+                for n in range(repeat_test):
+                    points = g.x.size*g.y.size*g.z.size
+                    solver.init(g, m, steps)
+                    t1 = time()
+                    #cProfile.run("solver.run()")
+                    solver.run()
+                    t2 =  time()-t1
+                    t_time += t2
+                    print("run {}: {} completed {} steps in {}s".format(n+1, s, steps, t2))
+                    csvwriter.writerow([solver.name, n+1, steps, points, t2, str(solver.cfg)])
+                print("{} runs in {}s ({}s avg)".format(repeat_test, t_time, t_time/repeat_test))

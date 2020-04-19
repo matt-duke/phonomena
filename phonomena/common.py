@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import shutil
 import logging
+import multiprocessing as mp
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +79,10 @@ def setTempdir():
         temp.mkdir()
     os.environ["TMPDIR"] = str(temp)
 
+def configMultiprocessing():
+    mp.freeze_support()
+    mp.set_start_method('spawn')
+
 # Returns solver object
 def importSolver(module):
     mod = __import__('{}.{}'.format(SOLVER_PKG, module), fromlist=['Solver'])
@@ -85,6 +90,7 @@ def importSolver(module):
     return solver
 
 def findSolvers():
+    global solver_dict, solver
     solver_dict = {}
 
     dir = os.listdir(SOLVER_DIR)
@@ -97,7 +103,10 @@ def findSolvers():
             solver_dict[s.name] = s
         except Exception as e:
             logger.error("Error importing solver {}: {}".format(f, e))
-    return solver_dict
+
+    logger.info("Found solvers: {}".format(list(solver_dict.keys())))
+    #solver = list(solver_dict.keys())[0]
+    solver = next(iter(solver_dict.values()))
 
 def loadSettings(path=SETTINGS_FILE):
     global cfg, grid, material, solver, solver_dict
@@ -170,18 +179,18 @@ def saveSettings(path):
     with open(path, 'w') as file:
         json.dump(cfg, file)
 
-def init():
-    global info, solver_dict, solver
+def startupTasks():
+    configureLogger()
+    configMultiprocessing()
+    setTempdir()
+
+    global info
 
     try:
         import info
     except:
         logger.warning("Error loading info file.")
 
-    solver_dict = findSolvers()
-    logger.info("Found solvers: {}".format(list(solver_dict.keys())))
-    #solver = list(solver_dict.keys())[0]
-    solver = next(iter(solver_dict.values()))
 
 if __name__ == '__main__':
     importSettings()

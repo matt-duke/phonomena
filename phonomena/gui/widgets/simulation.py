@@ -110,15 +110,17 @@ class Settings(QGroupBox):
         self.steps.setMinimum(1)
         self.steps.setMaximum(100000)
         self.steps.editingFinished.connect(self.update)
+        self.steps.setMinimumWidth(10)
         self.courant = QDoubleSpinBox()
         self.courant.setMinimum(0.001)
         self.courant.setMaximum(2)
         self.courant.setSingleStep(0.1)
+        self.courant.setMinimumWidth(10)
         self.courant.editingFinished.connect(self.update)
 
-        self.layout.addWidget(QLabel("Steps:"),0,0)
+        self.layout.addWidget(QLabel("Number of time steps:"),0,0)
         self.layout.addWidget(self.steps,0,1)
-        self.layout.addWidget(QLabel("Courant:"),1,0)
+        self.layout.addWidget(QLabel("CFL (Courant) condition:"),1,0)
         self.layout.addWidget(self.courant,1,1)
         margin = 20
         self.layout.setContentsMargins(margin,margin,margin,margin)
@@ -151,14 +153,14 @@ class Material(QGroupBox):
         self.materials.currentIndexChanged.connect(self.setMaterial)
 
         self.density = QLabel()
-        self.stress = QGridLayout()
+        self.elasticity = QGridLayout()
 
-        self.layout.addWidget(QLabel("<b>Material:</b>"),0,0)
+        self.layout.addWidget(QLabel("Material:"),0,0)
         self.layout.addWidget(self.materials,0,1)
-        self.layout.addWidget(QLabel("<b>Density:</b>"),1,0)
+        self.layout.addWidget(QLabel("Density [kg/m<sup>3</sup>]:"),1,0)
         self.layout.addWidget(self.density,1,1)
-        self.layout.addWidget(QLabel("<b>Stress:</b>"),2,0,1,2)
-        self.layout.addLayout(self.stress,3,0,1,2)
+        self.layout.addWidget(QLabel("Elasticity [Pa*1e10]:"),2,0,1,2)
+        self.layout.addLayout(self.elasticity,3,0,1,2)
 
     def setMaterial(self):
         self.key = self.materials.currentText()
@@ -167,15 +169,15 @@ class Material(QGroupBox):
         self.density.setText("{:.2f}".format(properties['p']))
         stress = properties['c']
 
-        for i in reversed(range(self.stress.count())):
-            widgetToRemove = self.stress.itemAt(i).widget()
-            self.stress.removeWidget(widgetToRemove)
+        for i in reversed(range(self.elasticity.count())):
+            widgetToRemove = self.elasticity.itemAt(i).widget()
+            self.elasticity.removeWidget(widgetToRemove)
             widgetToRemove.setParent(None)
 
         for i in range(len(stress)):
             for j in range(len(stress[i])):
                 txt = "{:.2f}".format(stress[i][j]*1e-10)
-                self.stress.addWidget(QLabel(txt),i,j,alignment=QtCore.Qt.AlignCenter)
+                self.elasticity.addWidget(QLabel(txt),i,j,alignment=QtCore.Qt.AlignCenter)
 
     def refresh(self):
         self.materials.blockSignals(True)
