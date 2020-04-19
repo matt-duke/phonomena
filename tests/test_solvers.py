@@ -17,13 +17,15 @@ if __name__ == "__main__":
 
         def test_default(self):
             t1 = time()
-            s = common.importSolver("solver_multiprocess")
+            s = common.importSolver("solver_default")
+            s.cfg['write_mode'] = 'off'
             s.test()
             print(time()-t1)
 
         def test_numba(self):
             t1 = time()
             s = common.importSolver("solver_numba")
+            s.cfg['write_mode'] = 'off'
             s.test()
             print(time()-t1)
 

@@ -6,8 +6,10 @@ import logging
 logger = logging.getLogger(__name__)
 
 cfg = {
-    "cache": True,
-    "fastmath": True
+    "numba":{
+        "cache": True,
+        "fastmath": True
+    }
 }
 
 class Solver(base_solver.BaseSolver):
@@ -22,7 +24,7 @@ class Solver(base_solver.BaseSolver):
 
     def run(self, *args, **kwargs):
         global cfg
-        if cfg != self.cfg:
+        if cfg["numba"] != self.cfg["numba"]:
             cfg = self.cfg
             self.logger.debug("Recompiling numba funcs")
             self.recompile()
@@ -62,7 +64,7 @@ class Solver(base_solver.BaseSolver):
         self.g.T6[:,:,0] = T6
 
 
-@njit(cache=cfg['cache'], fastmath=cfg['fastmath'])
+@njit(cache=cfg['numba']['cache'], fastmath=cfg['numba']['fastmath'])
 def update_T(C, u, sd, fd):
     ux, uy, uz = u
     sdx, sdy, sdz = sd
@@ -113,7 +115,7 @@ def update_T(C, u, sd, fd):
     )
     return T1,T2,T3,T4,T5,T6
 
-@njit(cache=cfg['cache'], fastmath=cfg['fastmath'])
+@njit(cache=cfg['numba']['cache'], fastmath=cfg['numba']['fastmath'])
 def update_T_tfbc(C, u, fd, sd):
     ux, uy, uz = u
     fdx, fdy, fdz = fd

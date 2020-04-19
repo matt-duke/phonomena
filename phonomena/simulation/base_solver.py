@@ -206,11 +206,11 @@ class BaseSolver:
         self.g.update()
         self.m.update()
 
-        if self.cfg['write_mode'] != 'off':
-            if self.writer.is_alive():
-                self.writer.notify_finished()
-                self.writer.join(timeout=1)
+        if self.writer.is_alive():
+            self.writer.notify_finished()
+            self.writer.join(timeout=1)
 
+        if self.cfg['write_mode'] != 'off':
             self.writer = Writer(self.cfg['write_mode'])
             self.writer.init(
                 steps = self.t,
