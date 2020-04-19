@@ -37,7 +37,7 @@ if __name__ == '__main__':
         "solver_multiprocess"
     ]
 
-    step_arr = list(range(1000, 10001, 1000))
+    step_arr = list(range(1000, 5001, 1000))
     repeat_test = 3
 
     with open('tests/results/speed.csv', mode='w', newline='') as csvfile:
