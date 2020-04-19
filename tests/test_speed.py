@@ -38,9 +38,6 @@ if __name__ == '__main__':
     ]
 
     step_arr = list(range(1000, 10001, 1000))
-    print(step_arr)
-    quit()
-
     repeat_test = 3
 
     with open('tests/results/speed.csv', mode='w', newline='') as csvfile:
