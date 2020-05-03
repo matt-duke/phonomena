@@ -31,15 +31,14 @@ if __name__ == '__main__':
     m.update()
 
     solvers = [
-        "solver_default",
         "solver_numba",
+        "solver_default",
         "solver_threading",
         "solver_multiprocess"
     ]
 
-    step_arr = [500]#range(1000, 5000, 500)
-
-    repeat_test = 1
+    step_arr = list(range(1000, 5001, 1000))
+    repeat_test = 2
 
     with open('tests/results/speed.csv', mode='w', newline='') as csvfile:
         csvwriter = csv.writer(csvfile, dialect='excel', delimiter=',')

@@ -20,23 +20,26 @@ solvers = [
     #"solver_threading"
 ]
 
-files = ['fine.json', 'coarse.json', 'uniform_fine.json', 'uniform_coarse.json']
+files = ['fine.json', 'coarse.json', 'nonuniform.json']
 
 steps = 500
 repeat_test = 1
 
 if __name__ == '__main__':
     for s in solvers:
+        fpath = Path(__file__).resolve().parent.joinpath('data',file)
+        solver = common.importSolver(s)
+        common.loadSettings(fpath)
         for file in files:
-            fpath = Path(__file__).resolve().parent.joinpath('data',file)
-            solver = common.importSolver(s)
-            common.loadSettings(fpath)
             solver.init(common.grid, common.material, steps)
             t1 = time()
             #cProfile.run("solver.run()")
             solver.run()
             t2 =  time()-t1
             print("Total runtime (file: {}): {}".format(file, t2))
+
+            print
+            quit()
 
             x, freq, fft = analysis.spectrum(solver.file, 'uz', z_index=1, y_index=25, x_index=45)
             fig, ax = plt.subplots()

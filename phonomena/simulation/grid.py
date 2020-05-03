@@ -43,7 +43,7 @@ class Grid:
         self.min_d = 1 # Defualts to uniform array
         self.slope = 1
 
-        self.SI_conversion = 1e-3 # all variables stored in mm
+        self.SI_conversion = 1 # all variables stored in mm
 
         self.clearMesh() # Initialize mesh arrays
         self.clearInclusions() # Initialize targets array

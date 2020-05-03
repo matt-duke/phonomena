@@ -55,7 +55,7 @@ class Solver(base_solver.BaseSolver):
         self.workers = []
         self.bundle = self.pack()
 
-        num_workers = mp.cpu_count()-1
+        num_workers = mp.cpu_count()
         for i in range(num_workers):
             self.workers.append(
                 mp.Process(target=worker,
@@ -116,6 +116,16 @@ class Solver(base_solver.BaseSolver):
         self.worker_queue.join()
         self.unpack()
 
+    def update_T_tfbc(self):
+        self.worker_queue.put(update_T1_tfbc)
+        self.worker_queue.put(update_T2_tfbc)
+        self.worker_queue.put(update_T4_tfbc)
+        self.worker_queue.put(update_T5_tfbc)
+        self.worker_queue.put(update_T6_tfbc)
+        self.g.T3[1:-1,1:-1,0] = 0
+        self.worker_queue.join()
+        self.unpack()
+
 def update_T1(b):
     b['T1'][1:-1,1:-1,1:-1] = \
       b['C'][1:-1,1:-1,1:-1,0,0]*(b['ux'][1:,1:-1,1:-1] - b['ux'][:-1,1:-1,1:-1]) \
@@ -166,3 +176,33 @@ def update_T6(b):
         + (b['uy'][1:,:,1:-1] - b['uy'][:-1,:,1:-1]) \
         / b['fdx']
     )
+
+def update_T1_tfbc(b):
+    b['T1'][1:-1,1:-1,0] = \
+        b['C'][1:-1,1:-1,0,0,0]*(b['ux'][1:,1:-1,0] - b['ux'][:-1,1:-1,0]) / b['sdx'][0,:,:] \
+        + b['C'][1:-1,1:-1,0,0,1]*(b['uy'][1:-1,1:,0] - b['uy'][1:-1,:-1,0]) / b['sdy'][:,0,:] \
+        + b['C'][1:-1,1:-1,0,0,2]*(b['uz'][1:-1,1:-1,0] - 0) / b['sdz'][:,:,0]
+
+def update_T2_tfbc(b):
+    b['T2'][1:-1,1:-1,0] = \
+        b['C'][1:-1,1:-1,0,1,0]*(b['ux'][1:,1:-1,0] - b['ux'][:-1,1:-1,0]) / b['sdx'][0,:,:] \
+        + b['C'][1:-1,1:-1,0,1,1]*(b['uy'][1:-1,1:,0] - b['uy'][1:-1,:-1,0]) / b['sdy'][:,0,:] \
+        + b['C'][1:-1,1:-1,0,1,2]*(b['uz'][1:-1,1:-1,0] - 0) / b['sdz'][:,:,0]
+
+def update_T4_tfbc(b):
+    b['T4'][1:-1,:,0] = \
+        b['C'][1:-1,1:,0,3,3] \
+        * ((b['uy'][1:-1,:,1] - b['uy'][1:-1,:,0]) / b['fdy'][:,0,:] \
+        + (b['uz'][1:-1,1:,0] - b['uz'][1:-1,:-1,0]) / b['fdz'][:,:,0])
+
+def update_T5_tfbc(b):
+    b['T5'][:,1:-1,0] = \
+        b['C'][1:,1:-1,0,4,4] \
+        * ((b['ux'][:,1:-1,1] - b['ux'][:,1:-1,0]) / b['fdx'][0,:,:] \
+        + (b['uz'][1:,1:-1,0] - b['uz'][:-1,1:-1,0]) / b['fdz'][:,:,0])
+
+def update_T6_tfbc(b):
+    b['T6'][:,:,0] = \
+        b['C'][1:,1:,0,5,5] \
+        * ((b['ux'][:,1:,0] - b['ux'][:,:-1,0]) / b['fdx'][0,:,:] \
+        + (b['uy'][1:,:,0] - b['uy'][:-1,:,0]) / b['fdz'][:,:,0])

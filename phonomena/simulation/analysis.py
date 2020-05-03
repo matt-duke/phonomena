@@ -67,7 +67,7 @@ def spectrum(file, u_id, z_index, y_index, x_index=None):
 
         if x_index == None:
             # 2 dimensional FFT (x and t axes)
-            dft = np.abs(np.fft.fft2(u[:,y_index,z_index,:]*window_fn))
+            dft = np.abs(np.fft.fft2(u[:,y_index,z_index,:]*window_fn, norm="ortho"))
             dft = dft[:,:Nf]
 
         else:
@@ -79,7 +79,7 @@ def spectrum(file, u_id, z_index, y_index, x_index=None):
                 plt.show()'''
 
             # 1 dimensional FFT (t axis only)
-            dft = np.abs(np.fft.fft(u[x_index,y_index,z_index,:]*window_fn))
+            dft = np.abs(np.fft.fft(u[x_index,y_index,z_index,:]*window_fn, norm="ortho"))
             dft = dft[:Nf]
 
     except Exception as e:

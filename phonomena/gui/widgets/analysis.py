@@ -232,15 +232,16 @@ class Viewer(QWidget):
         try:
             iz, it = self.iz(u.shape[2]), self.it(u.shape[3])
             size_x, size_y = (u.shape[0], u.shape[1])
+            print(u.size)
             X, Y = np.meshgrid(x[:size_x], y[:size_y])
             self.disp_ax.figure.clear()
             self.disp_ax = self.disp_ax.figure.subplots()
             Z = u[:,:,iz,it].transpose()
             cf = self.disp_ax.contourf(X, Y, Z, 100)
             self.disp_ax.figure.colorbar(cf)
-            self.disp_ax.set_xlabel('X')
-            self.disp_ax.set_ylabel('Y')
-            self.disp_ax.set_title('{} at z={:.2f}, t={:.2f}ms'.format(self.u_id, z[iz], it*dt*1e-3))
+            self.disp_ax.set_xlabel('X [mm]')
+            self.disp_ax.set_ylabel('Y [mm]')
+            self.disp_ax.set_title('{} at z={:.2f}, t={:.2f}ms'.format(self.u_id, z[iz], it*dt*1e3))
             self.disp_ax.figure.canvas.draw()
         except Exception as e:
             self.showError(e)
@@ -261,12 +262,12 @@ class Viewer(QWidget):
                     self.plotDisplacement(x,y,z,u,dt)
                 elif sender == self.fft_slider:
                     self.plotDft1D(hdf, x, y, z, u.shape)
-                    self.plotDft2D(hdf, x, y, z, u.shape)
+                    #self.plotDft2D(hdf, x, y, z, u.shape)
                 #elif sender == self.z_slider:
                 else:
                     self.plotDensity(x,y,z,P)
                     self.plotDft1D(hdf, x, y, z, u.shape)
-                    self.plotDft2D(hdf, x, y, z, u.shape)
+                    #self.plotDft2D(hdf, x, y, z, u.shape)
                     self.plotDisplacement(x,y,z,u,dt)
         else:
             self.plotDensity(
