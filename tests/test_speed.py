@@ -31,9 +31,9 @@ if __name__ == '__main__':
     m.update()
 
     solvers = [
-        #"solver_default",
-        #"solver_numba",
-        #"solver_threading",
+        "solver_numba",
+        "solver_default",
+        "solver_threading",
         "solver_multiprocess"
     ]
 
