@@ -4,8 +4,10 @@ import os
 import time
 from pathlib import Path
 import PyInstaller.__main__
+import subprocess as sp
+import sys
 
-FAST = True
+FAST = False
 CONSOLE = False
 
 build_dir = Path('build')
@@ -28,7 +30,7 @@ elif os.name == 'posix':
     add_data = '--add-data={}:{}'
 
 version = '2.0'
-build_num = time.strftime('%j%y.%H%M%S')
+build_num = time.strftime('%j%y.%H%M')
 print("Building...")
 print('v.{}, b.{}'.format(version, build_num))
 
@@ -37,6 +39,10 @@ if not FAST:
         f.write('build = {}'.format(build_num))
         f.write('\n')
         f.write('version = {}'.format(version))
+        f.write('\n')
+        f.write('py_ver = "{}"'.format(sys.version).replace('\n',''))
+        #f.write('py_ver = \"{}\"'.format(sp.check_output([sys.executable, "--version"]).strip().decode("utf-8")))
+        #f.write('\n')
 else:
     print('WARNING: building in fast mode, version file not updated.')
 

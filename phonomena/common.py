@@ -15,6 +15,7 @@ except:
 class Info:
     version = 'none'
     build = 'none'
+    py_ver = 'none'
 
 # Assign defaults to variables
 info = Info

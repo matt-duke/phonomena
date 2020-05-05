@@ -84,12 +84,14 @@ class MainWindow(QMainWindow):
             common.saveSettings(filename)
 
     def about(self):
-        py_ver = sp.check_output([sys.executable, "--version"]).decode("utf-8")
         about = """<p>This program was developed for the ENPH 455 undergraduate thesis
         by Marc Cameron and continued by Matt Duke in 2020. It was designed to model acoustic wave
         transmission using an FDTD simulation.
-        <br><br>Python: {}<br>Version: {}<br>Build: {}</p>""".format(py_ver, common.info.version, common.info.build)
-        QMessageBox.about(self, "Phonomena", about)
+        <br><br>Interpreter: {}<br>Version: {}<br>Build: {}</p>""".format(common.info.py_ver, common.info.version, common.info.build)
+        msg = QMessageBox()
+        msg.setWindowTitle("Phonomena")
+        msg.setText(about)
+        msg.exec_()
 
     def openRepo(self):
         QtGui.QDesktopServices.openUrl(QtCore.QUrl('https://github.com/matt-duke/phonomena'))

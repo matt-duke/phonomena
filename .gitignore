@@ -8,3 +8,4 @@ debug.log
 activate.bat
 test.py
 tests/results/*
+phonomena/info.py
