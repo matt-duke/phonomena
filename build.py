@@ -22,6 +22,9 @@ info_file = Path(package_name).joinpath('info.py')
 hidden_imports = ['simulation.base_solver', 'dill', 'numba', 'xmlrpc.client', 'xmlrpc.server', 'requests', 'pkg_resources.py2_warn']
 hidden_imports = ('--hidden-import='+s for s in hidden_imports)
 
+excludes = ['FixTk', 'tcl', 'tk', '_tkinter', 'tkinter', 'Tkinter']
+excludes = ('--exclude-module='+s for s in excludes)
+
 console_mode = '--console' if CONSOLE else '--windowed'
 
 if os.name == 'nt':
@@ -52,6 +55,7 @@ PyInstaller.__main__.run([
     '--distpath={}'.format(dist_dir),
     '--specpath={}'.format(build_dir),
     '--onedir',
+    *excludes,
     console_mode,
     *hidden_imports,
     '--paths={}'.format(package_name),
