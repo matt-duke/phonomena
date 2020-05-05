@@ -5,11 +5,12 @@ import time
 from pathlib import Path
 import PyInstaller.__main__
 
-FAST = False
+FAST = True
+CONSOLE = False
 
 build_dir = Path('build')
 work_dir = build_dir.joinpath('work')
-dist_dir = build_dir.joinpath('build')
+dist_dir = build_dir.joinpath('release')
 package_name = "phonomena"
 data_dir = Path('data')
 solver_dir = Path(package_name).joinpath("simulation", "solvers")
@@ -18,6 +19,8 @@ info_file = Path(package_name).joinpath('info.py')
 
 hidden_imports = ['simulation.base_solver', 'dill', 'numba', 'xmlrpc.client', 'xmlrpc.server', 'requests', 'pkg_resources.py2_warn']
 hidden_imports = ('--hidden-import='+s for s in hidden_imports)
+
+console_mode = '--console' if CONSOLE else '--windowed'
 
 if os.name == 'nt':
     add_data = '--add-data={};{}'
@@ -43,7 +46,7 @@ PyInstaller.__main__.run([
     '--distpath={}'.format(dist_dir),
     '--specpath={}'.format(build_dir),
     '--onedir',
-    '--console',
+    console_mode,
     *hidden_imports,
     '--paths={}'.format(package_name),
     add_data.format(data_dir.resolve(), data_dir),

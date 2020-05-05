@@ -189,7 +189,7 @@ class Viewer(QWidget):
                 y_index=iy,
                 z_index=iz
             )
-            dft, I = analysis.trim_trailing_zeros(dft, threshold=1)
+            dft, I = analysis.trim_trailing_zeros(dft, threshold=0.5)
             self.spectrum2D_ax.figure.clear()
             self.spectrum2D_ax = self.spectrum2D_ax.figure.subplots()
             X, F = np.meshgrid(x, f[I])
@@ -232,7 +232,6 @@ class Viewer(QWidget):
         try:
             iz, it = self.iz(u.shape[2]), self.it(u.shape[3])
             size_x, size_y = (u.shape[0], u.shape[1])
-            print(u.size)
             X, Y = np.meshgrid(x[:size_x], y[:size_y])
             self.disp_ax.figure.clear()
             self.disp_ax = self.disp_ax.figure.subplots()
@@ -262,12 +261,12 @@ class Viewer(QWidget):
                     self.plotDisplacement(x,y,z,u,dt)
                 elif sender == self.fft_slider:
                     self.plotDft1D(hdf, x, y, z, u.shape)
-                    #self.plotDft2D(hdf, x, y, z, u.shape)
+                    self.plotDft2D(hdf, x, y, z, u.shape)
                 #elif sender == self.z_slider:
                 else:
                     self.plotDensity(x,y,z,P)
                     self.plotDft1D(hdf, x, y, z, u.shape)
-                    #self.plotDft2D(hdf, x, y, z, u.shape)
+                    self.plotDft2D(hdf, x, y, z, u.shape)
                     self.plotDisplacement(x,y,z,u,dt)
         else:
             self.plotDensity(

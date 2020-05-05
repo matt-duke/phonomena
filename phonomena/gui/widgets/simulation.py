@@ -159,7 +159,7 @@ class Material(QGroupBox):
         self.layout.addWidget(self.materials,0,1)
         self.layout.addWidget(QLabel("Density [kg/m<sup>3</sup>]:"),1,0)
         self.layout.addWidget(self.density,1,1)
-        self.layout.addWidget(QLabel("Elasticity [Pa*1e10]:"),2,0,1,2)
+        self.layout.addWidget(QLabel("Elasticity [Pa x1<sup>10</sup>]:"),2,0,1,2)
         self.layout.addLayout(self.elasticity,3,0,1,2)
 
     def setMaterial(self):

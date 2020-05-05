@@ -22,14 +22,19 @@ def trim_trailing_zeros(arr, threshold = 1):
     threshold: % of maximum value in arrays
     trim: front or back (fb is both)
     '''
+    og_arr = np.copy(arr)
     arr[arr < (threshold*np.max(arr)/100)] = 0
     if len(arr.shape) == 1:
         out = np.trim_zeros(arr, 'b')
+        if out.size == 0:
+            out = og_arr
         I = range(0, out.size)
 
     elif len(arr.shape) == 2:
         flattened = np.prod(arr, axis=0)
         temp = np.trim_zeros(flattened, 'b')
+        if temp.size == 0:
+            temp = flattened
         I = range(0, temp.size)
         out = arr[:,I]
     else:
