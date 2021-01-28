@@ -125,7 +125,7 @@ class Writer:
             hdf.attrs["sdz"] = grid.sdz
             hdf.attrs["fdx"] = grid.fdx
             hdf.attrs["fdy"] = grid.fdy
-            hdf.attrs["fd`z"] = grid.fdz
+            hdf.attrs["fdz"] = grid.fdz
             hdf.attrs["steps"] = steps
             hdf.attrs["dt"] = material.dt
             hdf.attrs["prim_material"] = material.primary['name']

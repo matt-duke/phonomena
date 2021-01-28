@@ -9,3 +9,6 @@ activate.bat
 test.py
 tests/results/*
 phonomena/info.py
+/img
+*.gif
+*.hdf5
